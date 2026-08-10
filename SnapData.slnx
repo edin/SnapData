@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SnapData/SnapData.csproj" />
+  </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/SnapData.Benchmarks/SnapData.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SnapData.IntegrationTests/SnapData.IntegrationTests.csproj" />
+    <Project Path="tests/SnapData.Tests/SnapData.Tests.csproj" />
+  </Folder>
+</Solution>
