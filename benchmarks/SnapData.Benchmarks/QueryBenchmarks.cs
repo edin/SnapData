@@ -30,7 +30,7 @@ public abstract class SqliteQueryBenchmarkBase
             """);
 
         await using var transaction = await Connection.BeginTransactionAsync();
-        for (var id = 1; id <= 1000; id++)
+        for (var id = 1; id <= 10_000; id++)
         {
             await Connection.ExecuteAsync(
                 "INSERT INTO users (id, name, active) VALUES (@Id, @Name, @Active)",
@@ -79,7 +79,7 @@ public class SingleQueryBenchmarks : SqliteQueryBenchmarkBase
 [MemoryDiagnoser]
 public class BufferedQueryBenchmarks : SqliteQueryBenchmarkBase
 {
-    [Params(10, 100, 1000)]
+    [Params(10, 100, 1000, 10_000)]
     public int RowCount { get; set; }
 
     [Benchmark]

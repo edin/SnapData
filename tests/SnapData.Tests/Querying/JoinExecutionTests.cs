@@ -24,9 +24,38 @@ public sealed class JoinExecutionTests
         await using var session = DbSession.Borrow(connection, SqliteQueryCompiler.Instance);
 
         var rows = await session
-            .From<BookWithAuthor>("Books b")
+            .From("Books b")
             .Join("Authors a ON a.Id = b.AuthorId")
-            .Select("b.Id", "b.Title", "a.Name AS AuthorName")
+            .Select<BookWithAuthor>("b.Id", "b.Title", "a.Name AS AuthorName")
+            .ToListAsync();
+
+        var row = Assert.Single(rows);
+        Assert.Equal(new BookWithAuthor(10, "A Wizard of Earthsea", "Ursula Le Guin"), row);
+    }
+
+    [Fact]
+    public async Task Generic_select_projects_mapped_source_into_result_type()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE Books (Id INTEGER PRIMARY KEY, Title TEXT NOT NULL, AuthorId INTEGER NOT NULL);
+                CREATE TABLE Authors (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL);
+                INSERT INTO Authors VALUES (1, 'Ursula Le Guin');
+                INSERT INTO Books VALUES (10, 'A Wizard of Earthsea', 1);
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var session = DbSession.Borrow(connection, SqliteQueryCompiler.Instance);
+
+        var rows = await session
+            .From<Book>("b")
+            .Join("Authors a ON a.Id = b.AuthorId")
+            .Select<BookWithAuthor>("b.Id", "b.Title", "a.Name AS AuthorName")
             .ToListAsync();
 
         var row = Assert.Single(rows);
@@ -74,4 +103,14 @@ public sealed class JoinExecutionTests
         [property: Column("role_name")] string? RoleName);
 
     private sealed record BookWithAuthor(long Id, string Title, string AuthorName);
+
+    [Table("Books")]
+    private sealed class Book
+    {
+        public long Id { get; set; }
+
+        public string Title { get; set; } = string.Empty;
+
+        public long AuthorId { get; set; }
+    }
 }

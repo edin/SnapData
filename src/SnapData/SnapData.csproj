@@ -5,6 +5,9 @@
     <PackageId>SnapData</PackageId>
     <Version>0.1.0-alpha.1</Version>
     <Description>Lightweight data access for .NET.</Description>
+    <PackageProjectUrl>https://github.com/edin/SnapData</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/edin/SnapData</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>

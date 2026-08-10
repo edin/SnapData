@@ -4,16 +4,21 @@ using System.Reflection;
 
 namespace SnapData;
 
+internal interface IRowMapper<out T>
+{
+    T Map(DbDataReader reader);
+}
+
 internal static class RowMapper<T>
 {
-    internal static Func<DbDataReader, T> Create(
+    internal static IRowMapper<T> Create(
         DbDataReader reader,
         IEntityMappingProvider mappingProvider)
     {
         var type = typeof(T);
         if (IsScalar(type))
         {
-            return row => (T)ConvertValue(row.GetValue(0), type)!;
+            return new ScalarMapper(type);
         }
 
         var mapping = mappingProvider.GetMapping(type);
@@ -21,9 +26,15 @@ internal static class RowMapper<T>
             .ToDictionary(reader.GetName, StringComparer.OrdinalIgnoreCase);
         var constructor = SelectConstructor(type, mapping, columns);
         var constructorParameters = constructor?.GetParameters() ?? [];
+        var constructorProperties = new HashSet<PropertyInfo>();
         var constructorBindings = constructorParameters.Select(parameter =>
         {
             var property = mapping.FindProperty(parameter.Name!);
+            if (property is not null)
+            {
+                constructorProperties.Add(property.Property);
+            }
+
             var columnName = property?.ColumnName ?? parameter.Name!;
             return columns.TryGetValue(columnName, out var ordinal)
                 ? new ConstructorBinding(parameter, ordinal)
@@ -33,37 +44,26 @@ internal static class RowMapper<T>
                         $"Column '{columnName}' is required to construct {type.Name}.");
         }).ToArray();
         var propertyBindings = mapping.Properties
-            .Where(property => property.CanWrite && columns.ContainsKey(property.ColumnName))
-            .Select(property => new PropertyBinding(property, columns[property.ColumnName]))
+            .Where(property => property.CanWrite
+                && !constructorProperties.Contains(property.Property)
+                && columns.ContainsKey(property.ColumnName))
+            .Select(property => PropertyHydrationOperation<T>.Create(
+                property,
+                columns[property.ColumnName],
+                reader.GetFieldType(columns[property.ColumnName])))
             .ToArray();
 
-        return row =>
+        if (constructor is not null && constructorParameters.Length > 0)
         {
-            object instance;
-            if (constructor is not null && constructorParameters.Length > 0)
-            {
-                var arguments = constructorBindings.Select(binding =>
-                    binding.Ordinal is { } ordinal
-                        ? ConvertValue(row.GetValue(ordinal), binding.Parameter.ParameterType)
-                        : binding.Parameter.DefaultValue).ToArray();
-                instance = constructor.Invoke(arguments);
-            }
-            else
-            {
-                instance = Activator.CreateInstance(type, nonPublic: true)
-                    ?? throw new InvalidOperationException(
-                        $"{type.Name} needs a parameterless constructor or a constructor matching result columns.");
-            }
+            return new ConstructorMapper(
+                constructor,
+                constructorBindings,
+                propertyBindings);
+        }
 
-            foreach (var binding in propertyBindings)
-            {
-                binding.Property.SetValue(
-                    instance,
-                    ConvertValue(row.GetValue(binding.Ordinal), binding.Property.PropertyType));
-            }
-
-            return (T)instance;
-        };
+        return new MutableMapper(
+            static () => Activator.CreateInstance<T>(),
+            propertyBindings);
     }
 
     private static ConstructorInfo? SelectConstructor(
@@ -121,7 +121,54 @@ internal static class RowMapper<T>
         return Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
     }
 
+    private sealed class ScalarMapper(Type type) : IRowMapper<T>
+    {
+        public T Map(DbDataReader reader) =>
+            (T)ConvertValue(reader.GetValue(0), type)!;
+    }
+
+    private sealed class MutableMapper(
+        Func<T> factory,
+        PropertyHydrationOperation<T>[] operations) : IRowMapper<T>
+    {
+        public T Map(DbDataReader reader)
+        {
+            var instance = factory();
+            for (var index = 0; index < operations.Length; index++)
+            {
+                operations[index].Apply(reader, instance);
+            }
+
+            return instance;
+        }
+    }
+
+    private sealed class ConstructorMapper(
+        ConstructorInfo constructor,
+        ConstructorBinding[] constructorBindings,
+        PropertyHydrationOperation<T>[] propertyOperations) : IRowMapper<T>
+    {
+        public T Map(DbDataReader reader)
+        {
+            var arguments = new object?[constructorBindings.Length];
+            for (var index = 0; index < constructorBindings.Length; index++)
+            {
+                var binding = constructorBindings[index];
+                arguments[index] = binding.Ordinal is { } ordinal
+                    ? ConvertValue(reader.GetValue(ordinal), binding.Parameter.ParameterType)
+                    : binding.Parameter.DefaultValue;
+            }
+
+            var instance = (T)constructor.Invoke(arguments);
+            for (var index = 0; index < propertyOperations.Length; index++)
+            {
+                propertyOperations[index].Apply(reader, instance);
+            }
+
+            return instance;
+        }
+    }
+
     private sealed record ConstructorBinding(ParameterInfo Parameter, int? Ordinal);
 
-    private sealed record PropertyBinding(PropertyMapping Property, int Ordinal);
 }

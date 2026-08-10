@@ -51,6 +51,13 @@ public sealed class EntityQuery<T> where T : class
         return this;
     }
 
+    public ProjectedQuery<TResult> Select<TResult>(params string[] columns)
+        where TResult : class
+    {
+        Select(columns);
+        return new ProjectedQuery<TResult>(_executor, _query);
+    }
+
     public EntityQuery<T> Select(
         ColumnReference column,
         params ColumnReference[] columns)
@@ -60,6 +67,15 @@ public sealed class EntityQuery<T> where T : class
         return this;
     }
 
+    public ProjectedQuery<TResult> Select<TResult>(
+        ColumnReference column,
+        params ColumnReference[] columns)
+        where TResult : class
+    {
+        Select(column, columns);
+        return new ProjectedQuery<TResult>(_executor, _query);
+    }
+
     public EntityQuery<T> Select(
         ISelectExpression expression,
         params ISelectExpression[] expressions)
@@ -67,6 +83,15 @@ public sealed class EntityQuery<T> where T : class
         _query.Select(expression, expressions);
         _hasExplicitProjection = true;
         return this;
+    }
+
+    public ProjectedQuery<TResult> Select<TResult>(
+        ISelectExpression expression,
+        params ISelectExpression[] expressions)
+        where TResult : class
+    {
+        Select(expression, expressions);
+        return new ProjectedQuery<TResult>(_executor, _query);
     }
 
     public EntityQuery<T> Distinct(bool distinct = true)
@@ -348,6 +373,106 @@ public sealed class EntityQuery<T> where T : class
             await loader.LoadAsync(entities, _executor, options, cancellationToken);
         }
     }
+}
+
+public sealed class ProjectedQuery<TResult>
+    where TResult : class
+{
+    private readonly IDbExecutor _executor;
+    private readonly SelectQueryBuilder _query;
+
+    internal ProjectedQuery(IDbExecutor executor, SelectQueryBuilder query)
+    {
+        _executor = executor;
+        _query = query;
+    }
+
+    public ProjectedQuery<TResult> Distinct(bool distinct = true)
+    {
+        _query.Distinct(distinct);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> Where(PredicateExpression predicate)
+    {
+        _query.Where(predicate);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> Where(string criteria, object? parameters = null)
+    {
+        _query.Where(criteria, parameters);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> GroupBy(params string[] columns)
+    {
+        _query.GroupBy(columns);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> Having(PredicateExpression predicate)
+    {
+        _query.Having(predicate);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> Having(string criteria, object? parameters = null)
+    {
+        _query.Having(criteria, parameters);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> OrderBy(string column)
+    {
+        _query.OrderBy(column);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> OrderByDescending(string column)
+    {
+        _query.OrderByDescending(column);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> Limit(int limit)
+    {
+        _query.Limit(limit);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> Offset(int offset)
+    {
+        _query.Offset(offset);
+        return this;
+    }
+
+    public Task<IReadOnlyList<TResult>> ToListAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        _executor.QueryAsync<TResult>(_query, options, cancellationToken);
+
+    public async Task<PageResult<TResult>> PageAsync(
+        int pageNumber,
+        int pageSize,
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        var offset = checked((pageNumber - 1) * pageSize);
+        var totalCount = await _executor.ScalarAsync<long>(
+            new CountQueryBuilder(_query.CloneWithoutPaging()),
+            options,
+            cancellationToken);
+        var items = await _executor.QueryAsync<TResult>(
+            _query.Clone().Offset(offset).Limit(pageSize),
+            options,
+            cancellationToken);
+        return new PageResult<TResult>(items, totalCount, pageNumber, pageSize);
+    }
+
+    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
 }
 
 public sealed class PageResult<T>

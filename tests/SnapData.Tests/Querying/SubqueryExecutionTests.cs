@@ -34,8 +34,8 @@ public sealed class SubqueryExecutionTests
                 & (Exp.Col("a.kind") == "login"));
 
         var rows = await session
-            .From<UserRow>("users u")
-            .Select("u.id", "u.name")
+            .From("users u")
+            .Select<UserRow>("u.id", "u.name")
             .Where(Exp.Col("u.id").In(orderUsers) & Exp.Exists(loginAudit))
             .ToListAsync();
 

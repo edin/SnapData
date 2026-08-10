@@ -585,6 +585,26 @@ methods.
 dotnet run -c Release --project benchmarks/SnapData.Benchmarks -- --filter *
 ```
 
+Hydration can be measured independently from command execution:
+
+```powershell
+dotnet run -c Release --project benchmarks/SnapData.Benchmarks -- --filter *HydrationBenchmarks*
+dotnet run -c Release --project benchmarks/SnapData.Benchmarks -- --filter *MapperCreationBenchmarks*
+```
+
+Use BenchmarkDotNet's short job while iterating:
+
+```powershell
+dotnet run -c Release --project benchmarks/SnapData.Benchmarks -- --job short --filter *MutableHydrationBenchmarks*
+```
+
+For a very fast smoke check, use the dry job. Its numbers are not suitable for
+performance conclusions:
+
+```powershell
+dotnet run -c Release --project benchmarks/SnapData.Benchmarks -- --job dry --filter *MutableHydrationBenchmarks*
+```
+
 ## Design boundaries
 
 SnapData intentionally does not provide:

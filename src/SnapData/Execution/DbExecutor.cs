@@ -47,12 +47,28 @@ public abstract class DbExecutor : IDbExecutor
     public EntityQuery<T> From<T>() where T : class =>
         new(this, _mappingProvider.GetMapping<T>(), _mappingProvider);
 
-    public EntityQuery<T> From<T>(string source) where T : class =>
+    public EntityQuery<T> From<T>(string alias) where T : class =>
         new(
             this,
             _mappingProvider.GetMapping<T>(),
             _mappingProvider,
-            TableReference.Parse(source));
+            _mappingProvider.GetMapping<T>().Table.As(alias));
+
+    public EntityQuery<T> From<T>(TableReference source) where T : class =>
+        new(this, _mappingProvider.GetMapping<T>(), _mappingProvider, source);
+
+    public SourceQuery From(string source) => new(this, Sql.From(source));
+
+    public SourceQuery From(TableReference source) => new(this, Sql.From(source));
+
+    public EntityInsert<T> InsertInto<T>() where T : class =>
+        new(this, _mappingProvider.GetMapping<T>());
+
+    public EntityUpdate<T> Update<T>() where T : class =>
+        new(this, _mappingProvider.GetMapping<T>());
+
+    public EntityDelete<T> DeleteFrom<T>() where T : class =>
+        new(this, _mappingProvider.GetMapping<T>());
 
     public Task<TResult> Query<TResult>(
         IStoredProc<TResult> procedure,
@@ -130,7 +146,7 @@ public abstract class DbExecutor : IDbExecutor
         var map = RowMapper<T>.Create(reader, _mappingProvider);
         while (await reader.ReadAsync(cancellationToken))
         {
-            items.Add(map(reader));
+            items.Add(map.Map(reader));
         }
 
         return items;
@@ -258,7 +274,7 @@ public abstract class DbExecutor : IDbExecutor
             var map = RowMapper<T>.Create(reader, _mappingProvider);
             while (await reader.ReadAsync(cancellationToken))
             {
-                results.Add(map(reader));
+                results.Add(map.Map(reader));
             }
         }
 
@@ -305,7 +321,7 @@ public abstract class DbExecutor : IDbExecutor
             if (await reader.ReadAsync(cancellationToken))
             {
                 var map = RowMapper<T>.Create(reader, _mappingProvider);
-                result = map(reader);
+                result = map.Map(reader);
                 if (await reader.ReadAsync(cancellationToken))
                 {
                     throw new InvalidOperationException("The query returned more than one row.");

@@ -92,9 +92,9 @@ public abstract class ProviderContractTests
             .GroupBy("o.user_id")
             .Having(Sql.Sum("o.total") > 10);
         var page = await session
-            .From<UserOrderSummary>("contract_users u")
+            .From("contract_users u")
             .Join("contract_orders o ON o.user_id = u.id")
-            .Select(
+            .Select<UserOrderSummary>(
                 Sql.Col("u.id").As("UserId"),
                 Sql.Col("u.name").As("Name"),
                 Sql.Sum("o.total").As("Total"))

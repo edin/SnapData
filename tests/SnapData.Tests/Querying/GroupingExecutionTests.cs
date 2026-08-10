@@ -23,8 +23,8 @@ public sealed class GroupingExecutionTests
         var count = Sql.Count("o.id");
 
         var rows = await session
-            .From<CustomerSummary>("orders o")
-            .Select(
+            .From("orders o")
+            .Select<CustomerSummary>(
                 Sql.Col("o.customer_id").As("CustomerId"),
                 count.As("OrderCount"),
                 Sql.Sum("o.total").As("Total"))

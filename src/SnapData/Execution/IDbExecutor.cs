@@ -4,7 +4,19 @@ public interface IDbExecutor
 {
     EntityQuery<T> From<T>() where T : class;
 
-    EntityQuery<T> From<T>(string source) where T : class;
+    EntityQuery<T> From<T>(string alias) where T : class;
+
+    EntityQuery<T> From<T>(TableReference source) where T : class;
+
+    SourceQuery From(string source);
+
+    SourceQuery From(TableReference source);
+
+    EntityInsert<T> InsertInto<T>() where T : class;
+
+    EntityUpdate<T> Update<T>() where T : class;
+
+    EntityDelete<T> DeleteFrom<T>() where T : class;
 
     Task<TResult> Query<TResult>(
         IStoredProc<TResult> procedure,
