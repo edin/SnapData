@@ -15,17 +15,23 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
         bool ownsConnection,
         bool openedBorrowedConnection,
         IQueryCompiler? queryCompiler,
-        IEntityMappingProvider? mappingProvider)
-        : base(connection, queryCompiler: queryCompiler, mappingProvider: mappingProvider)
+        IEntityMappingProvider? mappingProvider,
+        ICommandObserver? commandObserver)
+        : base(
+            connection,
+            queryCompiler: queryCompiler,
+            mappingProvider: mappingProvider,
+            commandObserver: commandObserver)
     {
         _ownsConnection = ownsConnection;
         _openedBorrowedConnection = openedBorrowedConnection;
     }
 
-    public static DbSession Borrow(
+    internal static DbSession Borrow(
         DbConnection connection,
         IQueryCompiler? queryCompiler = null,
-        IEntityMappingProvider? mappingProvider = null)
+        IEntityMappingProvider? mappingProvider = null,
+        ICommandObserver? commandObserver = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         return new DbSession(
@@ -33,19 +39,22 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
             ownsConnection: false,
             openedBorrowedConnection: false,
             queryCompiler,
-            mappingProvider);
+            mappingProvider,
+            commandObserver);
     }
 
     internal static DbSession Own(
         DbConnection connection,
         IQueryCompiler queryCompiler,
-        IEntityMappingProvider mappingProvider) =>
+        IEntityMappingProvider mappingProvider,
+        ICommandObserver? commandObserver) =>
         new(
             connection,
             ownsConnection: true,
             openedBorrowedConnection: false,
             queryCompiler,
-            mappingProvider);
+            mappingProvider,
+            commandObserver);
 
     public async ValueTask<DbTransactionSession> BeginTransactionAsync(
         IsolationLevel isolationLevel = IsolationLevel.Unspecified,
@@ -68,7 +77,8 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
             transaction,
             TransactionCompleted,
             QueryCompiler,
-            MappingProvider);
+            MappingProvider,
+            CommandObserver);
         return _activeTransaction;
     }
 

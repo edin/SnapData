@@ -13,9 +13,10 @@ public sealed class DbTransactionSession : DbExecutor, IDisposable, IAsyncDispos
         DbTransaction transaction,
         Action<DbTransactionSession> completed,
         IQueryCompiler queryCompiler,
-        IEntityMappingProvider mappingProvider)
+        IEntityMappingProvider mappingProvider,
+        ICommandObserver? commandObserver)
         : base(transaction.Connection
-            ?? throw new InvalidOperationException("The transaction has no connection."), transaction, queryCompiler, mappingProvider)
+            ?? throw new InvalidOperationException("The transaction has no connection."), transaction, queryCompiler, mappingProvider, commandObserver)
     {
         _dbTransaction = transaction;
         _completed = completed;

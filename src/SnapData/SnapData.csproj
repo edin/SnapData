@@ -3,11 +3,20 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <PackageId>SnapData</PackageId>
+    <Title>SnapData</Title>
+    <Authors>Edin</Authors>
+    <Copyright>Copyright © 2026 Edin</Copyright>
     <Version>0.1.0-alpha.1</Version>
-    <Description>Lightweight data access for .NET.</Description>
+    <Description>Lightweight, explicit data access and query building for .NET.</Description>
+    <PackageTags>orm;database;sql;data-access;micro-orm;ado-net</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/edin/SnapData</PackageProjectUrl>
     <RepositoryUrl>https://github.com/edin/SnapData</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
@@ -15,6 +24,11 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
 </Project>

@@ -118,7 +118,7 @@ public sealed class EntityMappingProvider : IEntityMappingProvider
         PropertyInfo navigation)
     {
         var type = navigation.PropertyType;
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+        if (type.IsGenericType && IsSupportedCollection(type.GetGenericTypeDefinition()))
         {
             return (type.GetGenericArguments()[0], RelationCardinality.Collection);
         }
@@ -131,6 +131,12 @@ public sealed class EntityMappingProvider : IEntityMappingProvider
 
         return (type, RelationCardinality.Reference);
     }
+
+    private static bool IsSupportedCollection(Type genericType) =>
+        genericType == typeof(List<>)
+        || genericType == typeof(IList<>)
+        || genericType == typeof(ICollection<>)
+        || genericType == typeof(IReadOnlyList<>);
 
     private (string TableName, string? Schema) ResolveTable(
         Type entityType,

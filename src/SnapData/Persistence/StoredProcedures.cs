@@ -6,6 +6,74 @@ namespace SnapData;
 
 public interface IStoredProc<TResult>;
 
+[AttributeUsage(AttributeTargets.Property, Inherited = true)]
+public abstract class StoredProcedureParameterAttribute : Attribute
+{
+    protected StoredProcedureParameterAttribute()
+    {
+    }
+
+    protected StoredProcedureParameterAttribute(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        Name = name;
+    }
+
+    public string? Name { get; }
+
+    public DbType DbType { get; set; } = DbType.Object;
+
+    public int Size { get; set; } = -1;
+
+    public byte Precision { get; set; }
+
+    public byte Scale { get; set; }
+}
+
+public sealed class InputAttribute : StoredProcedureParameterAttribute
+{
+    public InputAttribute()
+    {
+    }
+
+    public InputAttribute(string name) : base(name)
+    {
+    }
+}
+
+public sealed class OutputAttribute : StoredProcedureParameterAttribute
+{
+    public OutputAttribute()
+    {
+    }
+
+    public OutputAttribute(string name) : base(name)
+    {
+    }
+}
+
+public sealed class InputOutputAttribute : StoredProcedureParameterAttribute
+{
+    public InputOutputAttribute()
+    {
+    }
+
+    public InputOutputAttribute(string name) : base(name)
+    {
+    }
+}
+
+public sealed class ReturnValueAttribute : StoredProcedureParameterAttribute
+{
+    public ReturnValueAttribute()
+    {
+    }
+
+    public ReturnValueAttribute(string name) : base(name)
+    {
+    }
+}
+
 public sealed class Result<T>
 {
     public Result()
@@ -47,14 +115,118 @@ internal static class StoredProcedureCommandFactory
     {
         ArgumentNullException.ThrowIfNull(procedure);
         var requestType = procedure.GetType();
-        var attribute = requestType.GetCustomAttribute<StoredProcedureAttribute>()
+        var procedureAttribute = requestType.GetCustomAttribute<StoredProcedureAttribute>()
             ?? throw new InvalidOperationException(
                 $"Stored procedure request {requestType.Name} requires {nameof(StoredProcedureAttribute)}.");
 
-        return new CommandDefinition(
-            attribute.Name,
-            ParameterSet.From(procedure),
-            CommandType.StoredProcedure);
+        var parameters = new ParameterSet();
+        foreach (var property in RequestProperties(requestType))
+        {
+            var parameterAttribute = GetParameterAttribute(property);
+            var direction = Direction(parameterAttribute);
+            EnsurePropertyAccess(requestType, property, direction);
+            var name = ParameterName(property, parameterAttribute, direction);
+            var value = direction is ParameterDirection.Input or ParameterDirection.InputOutput
+                ? property.GetValue(procedure)
+                : null;
+
+            if (parameterAttribute is null)
+            {
+                parameters.Input(name, value);
+                continue;
+            }
+
+            parameters.Add(new CommandParameter(
+                name,
+                value,
+                direction,
+                parameterAttribute.DbType == DbType.Object
+                    ? ParameterSet.InferDbType(property.PropertyType)
+                    : parameterAttribute.DbType,
+                parameterAttribute.Size >= 0 ? parameterAttribute.Size : null,
+                parameterAttribute.Precision > 0 ? parameterAttribute.Precision : null,
+                parameterAttribute.Scale > 0 ? parameterAttribute.Scale : null));
+        }
+
+        return Command.StoredProcedure(procedureAttribute.Name, parameters);
+    }
+
+    internal static void ApplyOutputs<TResult>(
+        IStoredProc<TResult> procedure,
+        ParameterSet parameters)
+    {
+        foreach (var property in RequestProperties(procedure.GetType()))
+        {
+            var attribute = GetParameterAttribute(property);
+            var direction = Direction(attribute);
+            if (direction == ParameterDirection.Input)
+            {
+                continue;
+            }
+
+            var value = parameters[ParameterName(property, attribute, direction)];
+            property.SetValue(
+                procedure,
+                value is null
+                    ? null
+                    : RowMapper<TResult>.ConvertValue(value, property.PropertyType));
+        }
+    }
+
+    private static IEnumerable<PropertyInfo> RequestProperties(Type requestType) =>
+        requestType
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(property => property.GetIndexParameters().Length == 0);
+
+    private static StoredProcedureParameterAttribute? GetParameterAttribute(
+        PropertyInfo property)
+    {
+        var attributes = property
+            .GetCustomAttributes<StoredProcedureParameterAttribute>(inherit: true)
+            .ToArray();
+        return attributes.Length switch
+        {
+            0 => null,
+            1 => attributes[0],
+            _ => throw new InvalidOperationException(
+                $"Stored-procedure property {property.DeclaringType?.Name}.{property.Name} has multiple parameter-direction attributes.")
+        };
+    }
+
+    private static ParameterDirection Direction(StoredProcedureParameterAttribute? attribute) =>
+        attribute switch
+        {
+            OutputAttribute => ParameterDirection.Output,
+            InputOutputAttribute => ParameterDirection.InputOutput,
+            ReturnValueAttribute => ParameterDirection.ReturnValue,
+            _ => ParameterDirection.Input
+        };
+
+    private static string ParameterName(
+        PropertyInfo property,
+        StoredProcedureParameterAttribute? attribute,
+        ParameterDirection direction) =>
+        attribute?.Name
+        ?? (direction == ParameterDirection.ReturnValue ? "return_value" : property.Name);
+
+    private static void EnsurePropertyAccess(
+        Type requestType,
+        PropertyInfo property,
+        ParameterDirection direction)
+    {
+        if (direction is ParameterDirection.Input or ParameterDirection.InputOutput
+            && !property.CanRead)
+        {
+            throw new InvalidOperationException(
+                $"Input property {requestType.Name}.{property.Name} must be readable.");
+        }
+
+        if (direction is ParameterDirection.Output or ParameterDirection.InputOutput or ParameterDirection.ReturnValue
+            && !property.CanWrite)
+        {
+            throw new InvalidOperationException(
+                $"Output property {requestType.Name}.{property.Name} must be writable.");
+        }
     }
 }
 

@@ -133,7 +133,7 @@ public sealed class ParameterSet : IReadOnlyDictionary<string, object?>
         return name[0] is '@' or ':' or '?' ? name[1..] : name;
     }
 
-    private static DbType? InferDbType(Type type)
+    internal static DbType? InferDbType(Type type)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
         if (type.IsEnum)

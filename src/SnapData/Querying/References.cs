@@ -1,4 +1,50 @@
+using System.Linq.Expressions;
+
 namespace SnapData;
+
+public sealed class EntityReference<T> where T : class
+{
+    private readonly EntityMapping _mapping;
+
+    internal EntityReference(EntityMapping mapping, string? alias)
+    {
+        _mapping = mapping;
+        Table = alias is null ? mapping.Table : mapping.Table.As(alias);
+    }
+
+    public TableReference Table { get; }
+
+    public ColumnExpression Col<TValue>(Expression<Func<T, TValue>> property) =>
+        Exp.Col(ResolveColumn(property));
+
+    public ColumnReference Col<TValue>(
+        Expression<Func<T, TValue>> property,
+        string alias) =>
+        ResolveColumn(property).As(alias);
+
+    private ColumnReference ResolveColumn<TValue>(Expression<Func<T, TValue>> property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        Expression body = property.Body;
+        while (body is UnaryExpression unary
+            && unary.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked)
+        {
+            body = unary.Operand;
+        }
+
+        if (body is not MemberExpression member || member.Expression != property.Parameters[0])
+        {
+            throw new ArgumentException(
+                "Column selection requires a direct mapped property expression.",
+                nameof(property));
+        }
+
+        var mapping = _mapping.FindProperty(member.Member.Name)
+            ?? throw new InvalidOperationException(
+                $"Property {typeof(T).Name}.{member.Member.Name} is not mapped as a column.");
+        return mapping.Column.Qualify(Table.Alias ?? Table.Name);
+    }
+}
 
 public sealed record TableReference
 {

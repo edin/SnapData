@@ -2,11 +2,15 @@ namespace SnapData;
 
 public interface IDbExecutor
 {
+    EntityReference<T> Entity<T>(string? alias = null) where T : class;
+
     EntityQuery<T> From<T>() where T : class;
 
     EntityQuery<T> From<T>(string alias) where T : class;
 
     EntityQuery<T> From<T>(TableReference source) where T : class;
+
+    EntityQuery<T> From<T>(EntityReference<T> source) where T : class;
 
     SourceQuery From(string source);
 

@@ -6,7 +6,24 @@ public abstract class SqlDialect : IQueryCompiler
 {
     public static SqlDialect Ansi { get; } = new AnsiSqlDialect();
 
-    public virtual bool SupportsReturning => true;
+    public virtual GeneratedInsertPlan CompileGeneratedInsert(
+        InsertQueryBuilder insert,
+        IReadOnlyList<ColumnReference> generatedColumns)
+    {
+        ArgumentNullException.ThrowIfNull(insert);
+        ArgumentNullException.ThrowIfNull(generatedColumns);
+        if (generatedColumns.Count == 0)
+        {
+            throw new ArgumentException(
+                "At least one generated column is required.",
+                nameof(generatedColumns));
+        }
+
+        insert.Returning(
+            generatedColumns[0],
+            generatedColumns.Skip(1).ToArray());
+        return new GeneratedInsertPlan(Compile(insert));
+    }
 
     public SqlQuery Compile(ISqlQueryBuilder query) =>
         query switch
@@ -85,7 +102,10 @@ public abstract class SqlDialect : IQueryCompiler
             .Append(QuoteTable(query.Table))
             .Append(" (")
             .Append(string.Join(", ", columns.Select(column => QuoteColumn(column, false))))
-            .Append(") VALUES ")
+            .Append(')');
+
+        AppendMutationOutput(sql, query.ReturningColumns, "INSERTED");
+        sql.Append(" VALUES ")
             .Append(string.Join(", ", rows.Select(row =>
                 $"({string.Join(", ", row.Select(pair => context.CompileValue(pair.Value)))})")));
 
@@ -109,6 +129,7 @@ public abstract class SqlDialect : IQueryCompiler
             .Append(string.Join(", ", query.Values.Select(pair =>
                 $"{QuoteColumn(pair.Key, false)} = {context.CompileValue(pair.Value)}")));
 
+        AppendMutationOutput(sql, query.ReturningColumns, "INSERTED");
         AppendWhere(sql, query.Predicate, context);
         AppendReturning(sql, query.ReturningColumns);
         return context.Query(sql);
@@ -122,6 +143,7 @@ public abstract class SqlDialect : IQueryCompiler
         var sql = new StringBuilder("DELETE FROM ")
             .Append(QuoteTable(query.Table));
 
+        AppendMutationOutput(sql, query.ReturningColumns, "DELETED");
         AppendWhere(sql, query.Predicate, context);
         AppendReturning(sql, query.ReturningColumns);
         return context.Query(sql);
@@ -163,6 +185,13 @@ public abstract class SqlDialect : IQueryCompiler
             sql.Append(" RETURNING ")
                 .Append(string.Join(", ", columns.Select(column => QuoteColumn(column, true))));
         }
+    }
+
+    protected virtual void AppendMutationOutput(
+        StringBuilder sql,
+        IReadOnlyList<ColumnReference> columns,
+        string source)
+    {
     }
 
     protected internal string QuoteTable(TableReference table)

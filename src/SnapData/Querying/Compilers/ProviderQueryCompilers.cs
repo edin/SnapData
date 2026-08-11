@@ -26,6 +26,33 @@ public sealed class PostgresQueryCompiler : SqlDialect
         $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 }
 
+public sealed class FirebirdQueryCompiler : SqlDialect
+{
+    public static FirebirdQueryCompiler Instance { get; } = new();
+
+    private FirebirdQueryCompiler()
+    {
+    }
+
+    protected internal override string QuoteIdentifier(string identifier) =>
+        $"\"{identifier.ToUpperInvariant().Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+
+    protected override void AppendLimit(StringBuilder sql, SelectQueryBuilder query)
+    {
+        if (query.OffsetValue is { } offset)
+        {
+            sql.Append(" OFFSET ").Append(offset).Append(" ROWS");
+        }
+
+        if (query.LimitValue is { } limit)
+        {
+            sql.Append(query.OffsetValue is null ? " FETCH FIRST " : " FETCH NEXT ")
+                .Append(limit)
+                .Append(" ROWS ONLY");
+        }
+    }
+}
+
 public sealed class MySqlQueryCompiler : SqlDialect
 {
     public static MySqlQueryCompiler Instance { get; } = new();
@@ -34,7 +61,22 @@ public sealed class MySqlQueryCompiler : SqlDialect
     {
     }
 
-    public override bool SupportsReturning => false;
+    public override GeneratedInsertPlan CompileGeneratedInsert(
+        InsertQueryBuilder insert,
+        IReadOnlyList<ColumnReference> generatedColumns)
+    {
+        ArgumentNullException.ThrowIfNull(insert);
+        ArgumentNullException.ThrowIfNull(generatedColumns);
+        if (generatedColumns.Count != 1)
+        {
+            throw new NotSupportedException(
+                "MySQL generated inserts require exactly one generated column.");
+        }
+
+        return new GeneratedInsertPlan(
+            Compile(insert),
+            new SqlQuery("SELECT LAST_INSERT_ID()"));
+    }
 
     protected internal override string QuoteIdentifier(string identifier) =>
         $"`{identifier.Replace("`", "``", StringComparison.Ordinal)}`";
@@ -79,8 +121,6 @@ public sealed class SqlServerQueryCompiler : SqlDialect
     {
     }
 
-    public override bool SupportsReturning => false;
-
     protected internal override string QuoteIdentifier(string identifier) =>
         $"[{identifier.Replace("]", "]]", StringComparison.Ordinal)}]";
 
@@ -113,5 +153,31 @@ public sealed class SqlServerQueryCompiler : SqlDialect
         {
             sql.Append(" FETCH NEXT ").Append(limit).Append(" ROWS ONLY");
         }
+    }
+
+    protected override void AppendMutationOutput(
+        StringBuilder sql,
+        IReadOnlyList<ColumnReference> columns,
+        string source)
+    {
+        if (columns.Count == 0)
+        {
+            return;
+        }
+
+        sql.Append(" OUTPUT ")
+            .Append(string.Join(", ", columns.Select(column =>
+            {
+                var result = $"{source}.{QuoteIdentifier(column.Name)}";
+                return column.Alias is null
+                    ? result
+                    : $"{result} AS {QuoteIdentifier(column.Alias)}";
+            })));
+    }
+
+    protected override void AppendReturning(
+        StringBuilder sql,
+        IReadOnlyList<ColumnReference> columns)
+    {
     }
 }

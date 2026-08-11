@@ -14,18 +14,21 @@ public abstract class DbExecutor : IDbExecutor
     private readonly IQueryCompiler _queryCompiler;
     private readonly IEntityMappingProvider _mappingProvider;
     private readonly IEntityCommandFactory _entityCommands;
+    private readonly ICommandObserver? _commandObserver;
 
     protected DbExecutor(
         DbConnection connection,
         DbTransaction? transaction = null,
         IQueryCompiler? queryCompiler = null,
-        IEntityMappingProvider? mappingProvider = null)
+        IEntityMappingProvider? mappingProvider = null,
+        ICommandObserver? commandObserver = null)
     {
         _connection = connection;
         _transaction = transaction;
         _queryCompiler = queryCompiler ?? SqlDialect.Ansi;
         _mappingProvider = mappingProvider ?? EntityMappingProvider.Default;
         _entityCommands = new EntityCommandFactory(_mappingProvider);
+        _commandObserver = commandObserver;
     }
 
     protected DbConnection Connection => _connection;
@@ -36,6 +39,8 @@ public abstract class DbExecutor : IDbExecutor
 
     protected IEntityMappingProvider MappingProvider => _mappingProvider;
 
+    protected ICommandObserver? CommandObserver => _commandObserver;
+
     protected virtual void EnsureCanExecute()
     {
     }
@@ -43,6 +48,9 @@ public abstract class DbExecutor : IDbExecutor
     protected virtual void OnOpeningConnection()
     {
     }
+
+    public EntityReference<T> Entity<T>(string? alias = null) where T : class =>
+        new(_mappingProvider.GetMapping<T>(), alias);
 
     public EntityQuery<T> From<T>() where T : class =>
         new(this, _mappingProvider.GetMapping<T>(), _mappingProvider);
@@ -56,6 +64,12 @@ public abstract class DbExecutor : IDbExecutor
 
     public EntityQuery<T> From<T>(TableReference source) where T : class =>
         new(this, _mappingProvider.GetMapping<T>(), _mappingProvider, source);
+
+    public EntityQuery<T> From<T>(EntityReference<T> source) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return From<T>(source.Table);
+    }
 
     public SourceQuery From(string source) => new(this, Sql.From(source));
 
@@ -89,43 +103,56 @@ public abstract class DbExecutor : IDbExecutor
             definition,
             options,
             cancellationToken);
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        var observation = Observe(definition, CommandExecutionKind.Query);
+        var resultCount = 0;
+        try
         {
-            foreach (var resultSet in mapping.ResultSets)
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
-                if (resultSet.Index > 0
-                    && !await reader.NextResultAsync(cancellationToken))
+                foreach (var resultSet in mapping.ResultSets)
                 {
-                    throw new InvalidOperationException(
-                        $"Stored procedure {definition.CommandText} did not return result set {resultSet.Index} expected by {typeof(TResult).Name}.{resultSet.Property.Name}.");
-                }
-
-                var items = await ReadProcedureResultSet(
-                    resultSet.ItemType,
-                    reader,
-                    cancellationToken);
-                var target = resultSet.Property.GetValue(result) as IList;
-                if (target is null)
-                {
-                    if (!resultSet.Property.CanWrite)
+                    if (resultSet.Index > 0
+                        && !await reader.NextResultAsync(cancellationToken))
                     {
                         throw new InvalidOperationException(
-                            $"Result-set property {typeof(TResult).Name}.{resultSet.Property.Name} must return a non-null List<{resultSet.ItemType.Name}> or have a setter.");
+                            $"Stored procedure {definition.CommandText} did not return result set {resultSet.Index} expected by {typeof(TResult).Name}.{resultSet.Property.Name}.");
                     }
 
-                    target = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(resultSet.ItemType))!;
-                    resultSet.Property.SetValue(result, target);
-                }
+                    var items = await ReadProcedureResultSet(
+                        resultSet.ItemType,
+                        reader,
+                        cancellationToken);
+                    resultCount += items.Count;
+                    var target = resultSet.Property.GetValue(result) as IList;
+                    if (target is null)
+                    {
+                        if (!resultSet.Property.CanWrite)
+                        {
+                            throw new InvalidOperationException(
+                                $"Result-set property {typeof(TResult).Name}.{resultSet.Property.Name} must return a non-null List<{resultSet.ItemType.Name}> or have a setter.");
+                        }
 
-                foreach (var item in items)
-                {
-                    target.Add(item);
+                        target = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(resultSet.ItemType))!;
+                        resultSet.Property.SetValue(result, target);
+                    }
+
+                    foreach (var item in items)
+                    {
+                        target.Add(item);
+                    }
                 }
             }
-        }
 
-        definition.Parameters.CaptureOutput(command.Parameters);
-        return (TResult)result;
+            definition.Parameters.CaptureOutput(command.Parameters);
+            StoredProcedureCommandFactory.ApplyOutputs(procedure, definition.Parameters);
+            observation?.Complete(resultCount: resultCount);
+            return (TResult)result;
+        }
+        catch (Exception exception)
+        {
+            observation?.Fail(exception);
+            throw;
+        }
     }
 
     private async Task<IList> ReadProcedureResultSet(
@@ -166,37 +193,61 @@ public abstract class DbExecutor : IDbExecutor
             .Where(property => property.IsGenerated && property.CanWrite)
             .ToArray();
 
-        if (generated.Length == 0 || !_queryCompiler.SupportsReturning)
+        if (generated.Length == 0)
         {
             return await ExecuteAsync(insert, options, cancellationToken);
         }
 
-        insert.Returning(
-            generated[0].Column,
-            generated.Skip(1).Select(property => property.Column).ToArray());
+        var plan = _queryCompiler.CompileGeneratedInsert(
+            insert,
+            generated.Select(property => property.Column).ToArray());
+        if (plan.FollowUpQuery is not null)
+        {
+            var affected = await ExecuteAsync(plan.Command, options, cancellationToken);
+            var value = await ScalarAsync<object>(
+                plan.FollowUpQuery,
+                options,
+                cancellationToken);
+            generated[0].SetValue(
+                entity,
+                RowMapper<T>.ConvertValue(value, generated[0].PropertyType));
+            return affected;
+        }
+
+        var definition = plan.Command;
         await using var command = await CreateCommandAsync(
-            Build(insert),
+            definition,
             options,
             cancellationToken);
-        await using var reader = await command.ExecuteReaderAsync(
-            CommandBehavior.SingleRow,
-            cancellationToken);
-
-        if (!await reader.ReadAsync(cancellationToken))
+        var observation = Observe(definition, CommandExecutionKind.NonQuery);
+        try
         {
-            throw new InvalidOperationException(
-                $"Insert for entity {entity.GetType().Name} did not return generated values.");
-        }
+            await using var reader = await command.ExecuteReaderAsync(
+                CommandBehavior.SingleRow,
+                cancellationToken);
 
-        for (var index = 0; index < generated.Length; index++)
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"Insert for entity {entity.GetType().Name} did not return generated values.");
+            }
+
+            for (var index = 0; index < generated.Length; index++)
+            {
+                var value = reader.IsDBNull(index)
+                    ? null
+                    : RowMapper<T>.ConvertValue(reader.GetValue(index), generated[index].PropertyType);
+                generated[index].SetValue(entity, value);
+            }
+
+            observation?.Complete(affectedRows: 1);
+            return 1;
+        }
+        catch (Exception exception)
         {
-            var value = reader.IsDBNull(index)
-                ? null
-                : RowMapper<T>.ConvertValue(reader.GetValue(index), generated[index].PropertyType);
-            generated[index].SetValue(entity, value);
+            observation?.Fail(exception);
+            throw;
         }
-
-        return 1;
     }
 
     public Task<int> UpdateAsync<T>(
@@ -235,9 +286,19 @@ public abstract class DbExecutor : IDbExecutor
             commandDefinition,
             options,
             cancellationToken);
-        var affected = await command.ExecuteNonQueryAsync(cancellationToken);
-        commandDefinition.Parameters.CaptureOutput(command.Parameters);
-        return affected;
+        var observation = Observe(commandDefinition, CommandExecutionKind.NonQuery);
+        try
+        {
+            var affected = await command.ExecuteNonQueryAsync(cancellationToken);
+            commandDefinition.Parameters.CaptureOutput(command.Parameters);
+            observation?.Complete(affectedRows: affected);
+            return affected;
+        }
+        catch (Exception exception)
+        {
+            observation?.Fail(exception);
+            throw;
+        }
     }
 
     public Task<int> ExecuteAsync(
@@ -268,18 +329,28 @@ public abstract class DbExecutor : IDbExecutor
             commandDefinition,
             options,
             cancellationToken);
-        var results = new List<T>();
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        var observation = Observe(commandDefinition, CommandExecutionKind.Query);
+        try
         {
-            var map = RowMapper<T>.Create(reader, _mappingProvider);
-            while (await reader.ReadAsync(cancellationToken))
+            var results = new List<T>();
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             {
-                results.Add(map.Map(reader));
+                var map = RowMapper<T>.Create(reader, _mappingProvider);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    results.Add(map.Map(reader));
+                }
             }
-        }
 
-        commandDefinition.Parameters.CaptureOutput(command.Parameters);
-        return results;
+            commandDefinition.Parameters.CaptureOutput(command.Parameters);
+            observation?.Complete(resultCount: results.Count);
+            return results;
+        }
+        catch (Exception exception)
+        {
+            observation?.Fail(exception);
+            throw;
+        }
     }
 
     public Task<IReadOnlyList<T>> QueryAsync<T>(
@@ -313,24 +384,36 @@ public abstract class DbExecutor : IDbExecutor
             commandDefinition,
             options,
             cancellationToken);
-        T? result = default;
-        await using (var reader = await command.ExecuteReaderAsync(
-            CommandBehavior.SingleResult,
-            cancellationToken))
+        var observation = Observe(commandDefinition, CommandExecutionKind.Query);
+        try
         {
-            if (await reader.ReadAsync(cancellationToken))
+            T? result = default;
+            var resultCount = 0;
+            await using (var reader = await command.ExecuteReaderAsync(
+                CommandBehavior.SingleResult,
+                cancellationToken))
             {
-                var map = RowMapper<T>.Create(reader, _mappingProvider);
-                result = map.Map(reader);
                 if (await reader.ReadAsync(cancellationToken))
                 {
-                    throw new InvalidOperationException("The query returned more than one row.");
+                    resultCount = 1;
+                    var map = RowMapper<T>.Create(reader, _mappingProvider);
+                    result = map.Map(reader);
+                    if (await reader.ReadAsync(cancellationToken))
+                    {
+                        throw new InvalidOperationException("The query returned more than one row.");
+                    }
                 }
             }
-        }
 
-        commandDefinition.Parameters.CaptureOutput(command.Parameters);
-        return result;
+            commandDefinition.Parameters.CaptureOutput(command.Parameters);
+            observation?.Complete(resultCount: resultCount);
+            return result;
+        }
+        catch (Exception exception)
+        {
+            observation?.Fail(exception);
+            throw;
+        }
     }
 
     public Task<T?> QuerySingleOrDefaultAsync<T>(
@@ -361,15 +444,25 @@ public abstract class DbExecutor : IDbExecutor
             commandDefinition,
             options,
             cancellationToken);
-        var value = await command.ExecuteScalarAsync(cancellationToken);
-        commandDefinition.Parameters.CaptureOutput(command.Parameters);
-
-        if (value is null || value is DBNull)
+        var observation = Observe(commandDefinition, CommandExecutionKind.Scalar);
+        try
         {
-            return default!;
-        }
+            var value = await command.ExecuteScalarAsync(cancellationToken);
+            commandDefinition.Parameters.CaptureOutput(command.Parameters);
+            observation?.Complete(resultCount: value is null or DBNull ? 0 : 1);
 
-        return (T)RowMapper<T>.ConvertValue(value, typeof(T))!;
+            if (value is null || value is DBNull)
+            {
+                return default!;
+            }
+
+            return (T)RowMapper<T>.ConvertValue(value, typeof(T))!;
+        }
+        catch (Exception exception)
+        {
+            observation?.Fail(exception);
+            throw;
+        }
     }
 
     public Task<T> ScalarAsync<T>(
@@ -438,6 +531,16 @@ public abstract class DbExecutor : IDbExecutor
 
     private static SqlQuery CreateQuery(string sql, object? parameters) =>
         new(sql, ParameterSet.From(parameters));
+
+    private CommandObservation? Observe(
+        CommandDefinition definition,
+        CommandExecutionKind kind) =>
+        CommandObservation.Start(
+            _commandObserver,
+            definition,
+            kind,
+            _connection.GetType().Name,
+            _transaction is not null);
 
     private SqlQuery Build(ISqlQueryBuilder query)
     {

@@ -106,6 +106,14 @@ public sealed class EntityQuery<T> where T : class
         return this;
     }
 
+    public EntityQuery<T> GroupBy(
+        ColumnReference column,
+        params ColumnReference[] columns)
+    {
+        _query.GroupBy(column, columns);
+        return this;
+    }
+
     public EntityQuery<T> GroupBy<TValue>(Expression<Func<T, TValue>> property)
     {
         _query.GroupBy(_translator.TranslateProperty(property));
@@ -130,9 +138,27 @@ public sealed class EntityQuery<T> where T : class
         return this;
     }
 
+    public EntityQuery<T> Join<TRelated>(
+        EntityReference<TRelated> table,
+        PredicateExpression on)
+        where TRelated : class
+    {
+        _query.Join(table.Table, on);
+        return this;
+    }
+
     public EntityQuery<T> LeftJoin(string clause, object? parameters = null)
     {
         _query.LeftJoin(clause, parameters);
+        return this;
+    }
+
+    public EntityQuery<T> LeftJoin<TRelated>(
+        EntityReference<TRelated> table,
+        PredicateExpression on)
+        where TRelated : class
+    {
+        _query.LeftJoin(table.Table, on);
         return this;
     }
 
@@ -142,15 +168,40 @@ public sealed class EntityQuery<T> where T : class
         return this;
     }
 
+    public EntityQuery<T> RightJoin<TRelated>(
+        EntityReference<TRelated> table,
+        PredicateExpression on)
+        where TRelated : class
+    {
+        _query.RightJoin(table.Table, on);
+        return this;
+    }
+
     public EntityQuery<T> FullJoin(string clause, object? parameters = null)
     {
         _query.FullJoin(clause, parameters);
         return this;
     }
 
+    public EntityQuery<T> FullJoin<TRelated>(
+        EntityReference<TRelated> table,
+        PredicateExpression on)
+        where TRelated : class
+    {
+        _query.FullJoin(table.Table, on);
+        return this;
+    }
+
     public EntityQuery<T> CrossJoin(string table)
     {
         _query.CrossJoin(table);
+        return this;
+    }
+
+    public EntityQuery<T> CrossJoin<TRelated>(EntityReference<TRelated> table)
+        where TRelated : class
+    {
+        _query.CrossJoin(table.Table);
         return this;
     }
 
@@ -208,7 +259,19 @@ public sealed class EntityQuery<T> where T : class
         return this;
     }
 
+    public EntityQuery<T> OrderBy(ColumnReference column)
+    {
+        _query.OrderBy(column);
+        return this;
+    }
+
     public EntityQuery<T> OrderByDescending(string column)
+    {
+        _query.OrderByDescending(column);
+        return this;
+    }
+
+    public EntityQuery<T> OrderByDescending(ColumnReference column)
     {
         _query.OrderByDescending(column);
         return this;
@@ -247,18 +310,15 @@ public sealed class EntityQuery<T> where T : class
         var relation = _mappingProvider.GetMapping<T>().FindRelation(member.Member.Name)
             ?? throw new InvalidOperationException(
                 $"Property {typeof(T).Name}.{member.Member.Name} is not a mapped relation.");
-        if (relation.Cardinality != RelationCardinality.Reference)
-        {
-            throw new NotSupportedException(
-                $"Collection relation {typeof(T).Name}.{relation.NavigationName} is not supported yet.");
-        }
-
         if (_relationLoaders.Any(loader => loader.Relation.Navigation == relation.Navigation))
         {
             return this;
         }
 
-        var loaderType = typeof(ReferenceRelationLoader<,>).MakeGenericType(
+        var loaderDefinition = relation.Cardinality == RelationCardinality.Reference
+            ? typeof(ReferenceRelationLoader<,>)
+            : typeof(CollectionRelationLoader<,>);
+        var loaderType = loaderDefinition.MakeGenericType(
             typeof(T),
             relation.RelatedType);
         var loader = Activator.CreateInstance(loaderType, relation, _mappingProvider)
@@ -411,6 +471,14 @@ public sealed class ProjectedQuery<TResult>
         return this;
     }
 
+    public ProjectedQuery<TResult> GroupBy(
+        ColumnReference column,
+        params ColumnReference[] columns)
+    {
+        _query.GroupBy(column, columns);
+        return this;
+    }
+
     public ProjectedQuery<TResult> Having(PredicateExpression predicate)
     {
         _query.Having(predicate);
@@ -429,7 +497,19 @@ public sealed class ProjectedQuery<TResult>
         return this;
     }
 
+    public ProjectedQuery<TResult> OrderBy(ColumnReference column)
+    {
+        _query.OrderBy(column);
+        return this;
+    }
+
     public ProjectedQuery<TResult> OrderByDescending(string column)
+    {
+        _query.OrderByDescending(column);
+        return this;
+    }
+
+    public ProjectedQuery<TResult> OrderByDescending(ColumnReference column)
     {
         _query.OrderByDescending(column);
         return this;
@@ -451,6 +531,50 @@ public sealed class ProjectedQuery<TResult>
         QueryOptions? options = null,
         CancellationToken cancellationToken = default) =>
         _executor.QueryAsync<TResult>(_query, options, cancellationToken);
+
+    public Task<TResult?> FirstOrDefaultAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        _executor.QuerySingleOrDefaultAsync<TResult>(
+            _query.Clone(1),
+            options,
+            cancellationToken);
+
+    public async Task<TResult> FirstAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        await FirstOrDefaultAsync(options, cancellationToken)
+        ?? throw new InvalidOperationException("The query returned no rows.");
+
+    public Task<TResult?> SingleOrDefaultAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        _executor.QuerySingleOrDefaultAsync<TResult>(
+            _query.Clone(2),
+            options,
+            cancellationToken);
+
+    public async Task<TResult> SingleAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        await SingleOrDefaultAsync(options, cancellationToken)
+        ?? throw new InvalidOperationException("The query returned no rows.");
+
+    public async Task<bool> AnyAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        await _executor.ScalarAsync<long>(
+            new CountQueryBuilder(_query.Clone(1)),
+            options,
+            cancellationToken) > 0;
+
+    public Task<long> CountAsync(
+        QueryOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        _executor.ScalarAsync<long>(
+            new CountQueryBuilder(_query.Clone()),
+            options,
+            cancellationToken);
 
     public async Task<PageResult<TResult>> PageAsync(
         int pageNumber,
