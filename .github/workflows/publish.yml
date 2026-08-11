@@ -2,6 +2,11 @@ name: Publish NuGet package
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version, for example 0.1.0-alpha.2"
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -25,11 +30,34 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Resolve package version
+        shell: pwsh
+        env:
+          MANUAL_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          }
+          else {
+            $version = $env:MANUAL_VERSION
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid package version '$version'."
+          }
+
+          "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "Publishing SnapData $version"
+
       - name: Restore
         run: dotnet restore SnapData.slnx
 
       - name: Test
-        run: dotnet test SnapData.slnx --configuration Release --no-restore
+        run: >
+          dotnet test SnapData.slnx
+          --configuration Release
+          --no-restore
+          -p:Version=$env:PACKAGE_VERSION
 
       - name: Pack
         run: >
@@ -38,6 +66,7 @@ jobs:
           --no-build
           --no-restore
           --output artifacts
+          -p:Version=$env:PACKAGE_VERSION
 
       - name: Log in to NuGet.org
         id: login
