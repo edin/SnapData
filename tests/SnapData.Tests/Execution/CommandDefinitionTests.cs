@@ -53,13 +53,73 @@ public sealed class CommandDefinitionTests
         var parameters = new ParameterSet()
             .Input("search", "Ed")
             .Output<int>("total_count");
-        var command = new CommandDefinition(
-            "app.search_users",
-            parameters,
-            CommandType.StoredProcedure);
+        var command = Command.StoredProcedure("app.search_users", parameters);
 
         Assert.Equal("app.search_users", command.CommandText);
         Assert.Equal(CommandType.StoredProcedure, command.CommandType);
+        Assert.Same(parameters, command.Parameters);
         Assert.Equal(DbType.Int32, parameters.GetParameter("total_count").DbType);
+    }
+
+    [Fact]
+    public void Stored_procedure_command_does_not_require_parameters()
+    {
+        var command = Command.StoredProcedure("app.refresh_users");
+
+        Assert.Equal("app.refresh_users", command.CommandText);
+        Assert.Equal(CommandType.StoredProcedure, command.CommandType);
+        Assert.Empty(command.Parameters);
+    }
+
+    [Fact]
+    public void Command_exposes_fluent_inputs_and_typed_output_references()
+    {
+        var command = Command
+            .StoredProcedure("app.search_users")
+            .Input("search", "Ed");
+        var total = command.Output<int>("total_count");
+        var returnValue = command.ReturnValue<int>();
+
+        command.Parameters.GetParameter("total_count").SetValue(12);
+        command.Parameters.GetParameter("return_value").SetValue(0);
+
+        Assert.Equal("Ed", command.Parameters["search"]);
+        Assert.Equal(12, total.Value);
+        Assert.Equal(0, returnValue.Value);
+        Assert.Same(command.Parameters.GetParameter("total_count"), total.Parameter);
+    }
+
+    [Fact]
+    public void Text_command_uses_text_command_type()
+    {
+        var command = Command.Text("SELECT @value").Input("value", 42);
+
+        Assert.Equal(CommandType.Text, command.CommandType);
+        Assert.Equal(42, command.Parameters["value"]);
+    }
+
+    [Fact]
+    public void Existing_parameter_values_can_be_updated_without_losing_metadata()
+    {
+        var command = Command
+            .Text("SELECT @value")
+            .Input("value", 1, DbType.Int32, size: 4);
+
+        command.SetParameter("value", 2);
+        var value = command.Parameter<int>("value");
+        value.Value = 3;
+
+        Assert.Equal(3, command.Parameters.Get<int>("value"));
+        Assert.Equal(DbType.Int32, value.Parameter.DbType);
+        Assert.Equal(4, value.Parameter.Size);
+    }
+
+    [Fact]
+    public void Typed_parameter_reference_requires_an_existing_parameter()
+    {
+        var command = Command.Text("SELECT 1");
+
+        Assert.Throws<KeyNotFoundException>(() => command.Parameter<int>("missing"));
+        Assert.Throws<KeyNotFoundException>(() => command.SetParameter("missing", 1));
     }
 }

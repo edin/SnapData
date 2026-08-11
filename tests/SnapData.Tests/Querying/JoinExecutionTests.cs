@@ -63,6 +63,51 @@ public sealed class JoinExecutionTests
     }
 
     [Fact]
+    public async Task Entity_references_build_fully_typed_join_and_projection()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE Books (Id INTEGER PRIMARY KEY, Title TEXT NOT NULL, AuthorId INTEGER NOT NULL);
+                CREATE TABLE Authors (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL);
+                INSERT INTO Authors VALUES (1, 'Ursula Le Guin');
+                INSERT INTO Books VALUES (10, 'A Wizard of Earthsea', 1);
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var session = DbSession.Borrow(connection, SqliteQueryCompiler.Instance);
+        var books = session.Entity<Book>("b");
+        var authors = session.Entity<Author>("a");
+
+        var rows = await session
+            .From(books)
+            .Join(authors, books.Col(book => book.AuthorId) == authors.Col(author => author.Id))
+            .Where(books.Col(book => book.Id) > 0)
+            .GroupBy(
+                books.Col(book => book.Id),
+                books.Col(book => book.Title),
+                authors.Col(author => author.Name))
+            .OrderBy(books.Col(book => book.Title))
+            .Select<BookWithAuthor>(
+                books.Col(book => book.Id),
+                books.Col(book => book.Title),
+                authors.Col(author => author.Name, "AuthorName"))
+            .OrderByDescending(authors.Col(author => author.Name))
+            .ToListAsync();
+
+        Assert.Equal(
+            new BookWithAuthor(10, "A Wizard of Earthsea", "Ursula Le Guin"),
+            Assert.Single(rows));
+        Assert.Equal(
+            "AuthorName",
+            authors.Col(author => author.Name).As("AuthorName").Alias);
+    }
+
+    [Fact]
     public async Task Joined_query_executes_and_maps_aliased_projection()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -112,5 +157,13 @@ public sealed class JoinExecutionTests
         public string Title { get; set; } = string.Empty;
 
         public long AuthorId { get; set; }
+    }
+
+    [Table("Authors")]
+    private sealed class Author
+    {
+        public long Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
     }
 }

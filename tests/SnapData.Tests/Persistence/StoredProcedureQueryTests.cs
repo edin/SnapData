@@ -40,6 +40,44 @@ public sealed class StoredProcedureQueryTests
     }
 
     [Fact]
+    public async Task Output_property_is_bound_as_output_and_updated_after_execution()
+    {
+        await using var connection = new ProcedureConnection(CreateOrders());
+        await using var session = DbSession.Borrow(connection);
+        var request = new SearchOrders { Search = "Ed" };
+
+        _ = await session.Query(request);
+
+        Assert.Equal(42, request.TotalCount);
+        Assert.Equal("Ed", connection.LastCommand!.Parameters["@Search"].Value);
+        Assert.Equal(
+            ParameterDirection.Output,
+            connection.LastCommand.Parameters["@total_count"].Direction);
+    }
+
+    [Fact]
+    public async Task Typed_request_supports_all_parameter_directions_and_metadata()
+    {
+        await using var connection = new ProcedureConnection(CreateOrders());
+        await using var session = DbSession.Borrow(connection);
+        var request = new CompleteSearchOrders
+        {
+            Search = "Ed",
+            State = 4
+        };
+
+        _ = await session.Query(request);
+
+        Assert.Equal(5, request.State);
+        Assert.Equal(42, request.TotalCount);
+        Assert.Equal(7, request.ReturnCode);
+        Assert.Equal("Ed", connection.LastCommand!.Parameters["@search_text"].Value);
+        Assert.Equal(50, connection.LastCommand.Parameters["@search_text"].Size);
+        Assert.Equal(ParameterDirection.InputOutput, connection.LastCommand.Parameters["@state"].Direction);
+        Assert.Equal(ParameterDirection.ReturnValue, connection.LastCommand.Parameters["@return_value"].Direction);
+    }
+
+    [Fact]
     public async Task Request_requires_stored_procedure_attribute()
     {
         await using var connection = new ProcedureConnection(CreateOrders());
@@ -104,6 +142,31 @@ public sealed class StoredProcedureQueryTests
     }
 
     private sealed class MissingAttribute : IStoredProc<Result<OrderDto>>;
+
+    [StoredProcedure("dbo.SearchOrders")]
+    private sealed class SearchOrders : IStoredProc<Result<OrderDto>>
+    {
+        public string Search { get; init; } = string.Empty;
+
+        [Output("total_count")]
+        public int TotalCount { get; set; }
+    }
+
+    [StoredProcedure("dbo.CompleteSearchOrders")]
+    private sealed class CompleteSearchOrders : IStoredProc<Result<OrderDto>>
+    {
+        [Input("search_text", Size = 50)]
+        public string Search { get; init; } = string.Empty;
+
+        [InputOutput("state")]
+        public int State { get; set; }
+
+        [Output("total_count")]
+        public int TotalCount { get; set; }
+
+        [ReturnValue]
+        public int ReturnCode { get; set; }
+    }
 
     [StoredProcedure("dbo.GetOrderData")]
     private sealed class GetOrderData : IStoredProc<OrderData>
@@ -239,8 +302,26 @@ public sealed class StoredProcedureQueryTests
 
         protected override DbParameter CreateDbParameter() => new ProcedureParameter();
 
-        protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) =>
-            new DataTableReader(results);
+        protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
+        {
+            foreach (DbParameter parameter in _parameters)
+            {
+                if (parameter.Direction == ParameterDirection.Output)
+                {
+                    parameter.Value = 42;
+                }
+                else if (parameter.Direction == ParameterDirection.InputOutput)
+                {
+                    parameter.Value = Convert.ToInt32(parameter.Value) + 1;
+                }
+                else if (parameter.Direction == ParameterDirection.ReturnValue)
+                {
+                    parameter.Value = 7;
+                }
+            }
+
+            return new DataTableReader(results);
+        }
     }
 
     private sealed class ProcedureParameter : DbParameter
