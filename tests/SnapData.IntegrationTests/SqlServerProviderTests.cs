@@ -23,6 +23,61 @@ public sealed class SqlServerProviderTests : ProviderContractTests
     [SqlServerFact]
     public Task Common_types() => Common_provider_types_round_trip();
 
+    [SqlServerFact]
+    public async Task Typed_stored_procedure_parameters_and_result_set()
+    {
+        await using var harness = await CreateHarnessAsync();
+        await using var session = await harness.Database.OpenSessionAsync();
+        await session.InsertAsync(new ContractUser { Name = "Edin", Active = true });
+        await session.InsertAsync(new ContractUser { Name = "Guest", Active = false });
+        var procedure = new SearchUsers
+        {
+            Search = "Ed",
+            State = 4
+        };
+
+        var result = await session.Query(procedure);
+
+        var user = Assert.Single(result.Items);
+        Assert.Equal("Edin", user.Name);
+        Assert.True(user.Active);
+        Assert.Equal(1, procedure.TotalCount);
+        Assert.Equal(5, procedure.State);
+        Assert.Equal(7, procedure.ReturnCode);
+    }
+
+    [SqlServerFact]
+    public async Task Selectable_stored_procedure_returns_typed_rows()
+    {
+        await using var harness = await CreateHarnessAsync();
+        await using (var command = harness.Connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE OR ALTER PROCEDURE SNAP_ECHO @INPUT_VALUE INT
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    SELECT @INPUT_VALUE + 1 AS OUTPUT_VALUE;
+                END
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await using var session = await harness.Database.OpenSessionAsync();
+            var result = await session.Query(new EchoProcedure { Value = 41 });
+            Assert.Equal(42, Assert.Single(result.Items).Value);
+        }
+        finally
+        {
+            await using var command = harness.Connection.CreateCommand();
+            command.CommandText = "DROP PROCEDURE SNAP_ECHO";
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
     protected override async Task<ProviderHarness> CreateHarnessAsync()
     {
         var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable);
@@ -32,6 +87,7 @@ public sealed class SqlServerProviderTests : ProviderContractTests
         {
             command.CommandText =
                 """
+                DROP PROCEDURE IF EXISTS dbo.snapdata_search_users;
                 DROP TABLE IF EXISTS contract_orders;
                 DROP TABLE IF EXISTS contract_values;
                 DROP TABLE IF EXISTS contract_users;
@@ -53,6 +109,22 @@ public sealed class SqlServerProviderTests : ProviderContractTests
                     payload VARBINARY(MAX) NOT NULL,
                     optional_text NVARCHAR(200) NULL
                 );
+
+                EXEC(N'
+                CREATE PROCEDURE dbo.snapdata_search_users
+                    @search NVARCHAR(200),
+                    @state INT OUTPUT,
+                    @total_count INT OUTPUT
+                AS
+                BEGIN
+                    SET NOCOUNT ON;
+                    SELECT id AS Id, name AS Name, active AS Active
+                    FROM contract_users
+                    WHERE name LIKE @search + N''%'';
+                    SET @total_count = @@ROWCOUNT;
+                    SET @state = @state + 1;
+                    RETURN 7;
+                END');
                 """;
             await command.ExecuteNonQueryAsync();
         }
@@ -63,6 +135,15 @@ public sealed class SqlServerProviderTests : ProviderContractTests
             SqlServerQueryCompiler.Instance);
         return new SqlServerHarness(database, anchor);
     }
+
+    [StoredProcedure("SNAP_ECHO")]
+    private sealed class EchoProcedure : IStoredProc<Result<EchoRow>>
+    {
+        [Input("INPUT_VALUE")]
+        public int Value { get; init; }
+    }
+
+    private sealed record EchoRow([property: Column("OUTPUT_VALUE")] int Value);
 
     private sealed class SqlServerHarness(
         SnapDatabase database,
@@ -77,6 +158,7 @@ public sealed class SqlServerProviderTests : ProviderContractTests
                 await using var command = anchor.CreateCommand();
                 command.CommandText =
                     """
+                    DROP PROCEDURE IF EXISTS dbo.snapdata_search_users;
                     DROP TABLE IF EXISTS contract_orders;
                     DROP TABLE IF EXISTS contract_values;
                     DROP TABLE IF EXISTS contract_users;
@@ -89,6 +171,24 @@ public sealed class SqlServerProviderTests : ProviderContractTests
             }
         }
     }
+
+    [StoredProcedure("dbo.snapdata_search_users")]
+    private sealed class SearchUsers : IStoredProc<Result<SearchUser>>
+    {
+        [Input("search", Size = 200)]
+        public string Search { get; init; } = string.Empty;
+
+        [InputOutput("state")]
+        public int State { get; set; }
+
+        [Output("total_count")]
+        public int TotalCount { get; set; }
+
+        [ReturnValue]
+        public int ReturnCode { get; set; }
+    }
+
+    private sealed record SearchUser(long Id, string Name, bool Active);
 }
 
 internal sealed class SqlServerFactAttribute : FactAttribute

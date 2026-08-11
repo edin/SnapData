@@ -14,13 +14,6 @@ public abstract class ProviderContractTests
         var user = new ContractUser { Name = "Edin", Active = true };
 
         Assert.Equal(1, await session.InsertAsync(user));
-        if (user.Id == 0)
-        {
-            user.Id = (await session.From<ContractUser>()
-                .Where(candidate => candidate.Name == user.Name)
-                .SingleAsync()).Id;
-        }
-
         Assert.True(user.Id > 0);
 
         user.Name = "Updated";
@@ -37,7 +30,7 @@ public abstract class ProviderContractTests
     public async Task Borrowed_session_does_not_dispose_the_connection()
     {
         await using var harness = await CreateHarnessAsync();
-        await using (var session = harness.Database.BorrowSession(harness.Connection))
+        await using (var session = harness.Database.Borrow(harness.Connection))
         {
             Assert.Equal(0, await session.From<ContractUser>().CountAsync());
         }

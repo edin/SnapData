@@ -23,6 +23,40 @@ public sealed class MySqlProviderTests : ProviderContractTests
     [MySqlFact]
     public Task Common_types() => Common_provider_types_round_trip();
 
+    [MySqlFact]
+    public async Task Selectable_stored_procedure_returns_typed_rows()
+    {
+        await using var harness = await CreateHarnessAsync();
+        await using (var drop = harness.Connection.CreateCommand())
+        {
+            drop.CommandText = "DROP PROCEDURE IF EXISTS SNAP_ECHO";
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        await using (var create = harness.Connection.CreateCommand())
+        {
+            create.CommandText =
+                """
+                CREATE PROCEDURE SNAP_ECHO(IN INPUT_VALUE INT)
+                SELECT INPUT_VALUE + 1 AS OUTPUT_VALUE
+                """;
+            await create.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await using var session = await harness.Database.OpenSessionAsync();
+            var result = await session.Query(new EchoProcedure { Value = 41 });
+            Assert.Equal(42, Assert.Single(result.Items).Value);
+        }
+        finally
+        {
+            await using var drop = harness.Connection.CreateCommand();
+            drop.CommandText = "DROP PROCEDURE SNAP_ECHO";
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
     protected override async Task<ProviderHarness> CreateHarnessAsync()
     {
         var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable)!;
@@ -63,6 +97,15 @@ public sealed class MySqlProviderTests : ProviderContractTests
             MySqlQueryCompiler.Instance);
         return new MySqlHarness(database, anchor);
     }
+
+    [StoredProcedure("SNAP_ECHO")]
+    private sealed class EchoProcedure : IStoredProc<Result<EchoRow>>
+    {
+        [Input("INPUT_VALUE")]
+        public int Value { get; init; }
+    }
+
+    private sealed record EchoRow([property: Column("OUTPUT_VALUE")] int Value);
 
     private sealed class MySqlHarness(
         SnapDatabase database,

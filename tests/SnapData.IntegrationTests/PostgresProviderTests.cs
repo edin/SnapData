@@ -23,6 +23,43 @@ public sealed class PostgresProviderTests : ProviderContractTests
     [PostgresFact]
     public Task Common_types() => Common_provider_types_round_trip();
 
+    [PostgresFact]
+    public async Task Selectable_stored_procedure_returns_typed_rows()
+    {
+        await using var harness = await CreateHarnessAsync();
+        await using (var command = harness.Connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE OR REPLACE PROCEDURE snap_echo(
+                    IN input_value integer,
+                    INOUT output_value integer)
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    output_value := input_value + 1;
+                END
+                $$
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        try
+        {
+            await using var session = await harness.Database.OpenSessionAsync();
+            var procedure = new EchoProcedure { Value = 41 };
+            var result = await session.Query(procedure);
+            Assert.Equal(42, Assert.Single(result.Items).Value);
+            Assert.Equal(42, procedure.OutputValue);
+        }
+        finally
+        {
+            await using var command = harness.Connection.CreateCommand();
+            command.CommandText = "DROP PROCEDURE snap_echo(integer, integer)";
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
     protected override async Task<ProviderHarness> CreateHarnessAsync()
     {
         var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable)!;
@@ -63,6 +100,18 @@ public sealed class PostgresProviderTests : ProviderContractTests
             PostgresQueryCompiler.Instance);
         return new PostgresHarness(database, anchor);
     }
+
+    [StoredProcedure("snap_echo")]
+    private sealed class EchoProcedure : IStoredProc<Result<EchoRow>>
+    {
+        [Input("input_value")]
+        public int Value { get; init; }
+
+        [InputOutput("output_value")]
+        public int OutputValue { get; set; }
+    }
+
+    private sealed record EchoRow([property: Column("output_value")] int Value);
 
     private sealed class PostgresHarness(
         SnapDatabase database,
