@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
 namespace SnapData;
@@ -9,7 +10,7 @@ public sealed class PropertyMapping
         string columnName,
         bool isNullable,
         bool isKey,
-        GeneratedKind generated)
+        DatabaseGeneratedOption generated)
     {
         Property = property;
         PropertyName = property.Name;
@@ -40,7 +41,7 @@ public sealed class PropertyMapping
 
     public bool IsKey { get; }
 
-    public GeneratedKind Generated { get; }
+    public DatabaseGeneratedOption Generated { get; }
 
     public bool CanRead { get; }
 
@@ -48,14 +49,14 @@ public sealed class PropertyMapping
 
     public bool IsEnum => ValueType.IsEnum;
 
-    public bool IsGenerated => Generated != GeneratedKind.Never;
+    public bool IsGenerated => Generated != DatabaseGeneratedOption.None;
 
     public bool IsSelectable => true;
 
-    public bool IsInsertable => CanRead && Generated == GeneratedKind.Never;
+    public bool IsInsertable => CanRead && Generated == DatabaseGeneratedOption.None;
 
     public bool IsUpdatable =>
-        CanRead && !IsKey && Generated == GeneratedKind.Never;
+        CanRead && !IsKey && Generated == DatabaseGeneratedOption.None;
 
     public object? GetValue(object entity)
     {

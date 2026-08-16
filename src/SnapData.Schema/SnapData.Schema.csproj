@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <PackageId>SnapData.Schema</PackageId>
+    <Title>SnapData.Schema</Title>
+    <Authors>Edin</Authors>
+    <Copyright>Copyright © 2026 Edin</Copyright>
+    <Version>0.1.0-alpha.1</Version>
+    <Description>Optional database schema inspection for SnapData.</Description>
+    <PackageTags>database;schema;metadata;inspection;snapdata</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/edin/SnapData</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/edin/SnapData</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <ProjectReference Include="..\SnapData\SnapData.csproj" />
+  </ItemGroup>
+
+</Project>

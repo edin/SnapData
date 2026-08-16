@@ -1,6 +1,6 @@
 # SnapData
 
-Lightweight, explicit data access for .NET 10.
+Lightweight, explicit data access for .NET 8, .NET 9, and .NET 10.
 
 SnapData sits between raw ADO.NET and a full ORM. It keeps SQL visible, maps
 rows to strongly typed results, provides entity CRUD, and offers a compact query
@@ -32,6 +32,10 @@ var rows = await session
 
 SnapData is currently `0.1.0-alpha.1`. The API is usable but may still change
 before a stable release.
+
+The package contains native `net8.0` and `net10.0` assemblies. .NET 9
+applications use the compatible `net8.0` assembly through NuGet's normal
+framework selection.
 
 SnapData is distributed under the MIT License.
 
@@ -130,11 +134,14 @@ open a closed borrowed connection, it closes it when the session is disposed.
 Mapping is convention-based and refined through attributes:
 
 ```csharp
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
 [Table("app.users")]
 public sealed class User
 {
     [Key]
-    [Generated(GeneratedKind.Identity)]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     [Column("user_id")]
     public long Id { get; set; }
 
@@ -145,10 +152,14 @@ public sealed class User
 
     public DateTime CreatedAt { get; set; }
 
-    [Ignore]
+    [NotMapped]
     public string DisplayLabel => $"{Id}: {Name}";
 }
 ```
+
+SnapData uses the standard .NET Data Annotations for tables, columns, keys,
+ignored properties, and generated values. Entity classes already annotated for
+other .NET data tooling can therefore reuse the same mapping metadata.
 
 Schema can be expressed inline or separately:
 

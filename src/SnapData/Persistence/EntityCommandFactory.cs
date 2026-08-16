@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace SnapData;
 
 public sealed class EntityCommandFactory : IEntityCommandFactory
@@ -80,7 +82,7 @@ public sealed class EntityCommandFactory : IEntityCommandFactory
                     $"Key {mapping.EntityType.Name}.{key.PropertyName} cannot be null.");
             }
 
-            if (key.Generated == GeneratedKind.Identity && IsDefaultValue(value, key.ValueType))
+            if (key.Generated == DatabaseGeneratedOption.Identity && IsDefaultValue(value, key.ValueType))
             {
                 throw new InvalidOperationException(
                     $"Identity key {mapping.EntityType.Name}.{key.PropertyName} has not been generated.");

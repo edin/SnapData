@@ -142,7 +142,7 @@ public abstract class ProviderContractTests
     protected sealed class ContractUser
     {
         [Key]
-        [Generated(GeneratedKind.Identity)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         [Column("id")]
         public long Id { get; set; }
 

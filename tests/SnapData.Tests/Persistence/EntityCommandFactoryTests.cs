@@ -84,13 +84,13 @@ public sealed class EntityCommandFactoryTests
     {
         [Key]
         [Column("user_id")]
-        [Generated(GeneratedKind.Identity)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public long Id { get; init; }
 
         [Column("display_name")]
         public required string Name { get; init; }
 
-        [Generated(GeneratedKind.Computed)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Computed)]
         public DateTime UpdatedAt { get; init; }
     }
 

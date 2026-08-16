@@ -18,7 +18,7 @@ public sealed class EntityMappingTests
         Assert.NotNull(id);
         Assert.Equal("user_id", id.ColumnName);
         Assert.True(id.IsKey);
-        Assert.Equal(GeneratedKind.Identity, id.Generated);
+        Assert.Equal(DatabaseGeneratedOption.Identity, id.Generated);
         Assert.False(id.IsNullable);
         Assert.False(id.IsInsertable);
         Assert.False(id.IsUpdatable);
@@ -101,7 +101,7 @@ public sealed class EntityMappingTests
             () => provider.GetMapping<MultipleIdentities>());
 
         Assert.Contains("multiple properties", duplicate.Message);
-        Assert.Contains("both Key and Ignore", ignoredKey.Message);
+        Assert.Contains("both Key and NotMapped", ignoredKey.Message);
         Assert.Contains("multiple identity", multipleIdentities.Message);
     }
 
@@ -110,7 +110,7 @@ public sealed class EntityMappingTests
     {
         [Key]
         [Column("user_id")]
-        [Generated(GeneratedKind.Identity)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public long Id { get; init; }
 
         [Column("display_name")]
@@ -118,7 +118,7 @@ public sealed class EntityMappingTests
 
         public string? Nickname { get; init; }
 
-        [Ignore]
+        [NotMapped]
         public string DisplayLabel => Name;
     }
 
@@ -167,18 +167,18 @@ public sealed class EntityMappingTests
     private sealed class IgnoredKey
     {
         [Key]
-        [Ignore]
+        [NotMapped]
         public long Id { get; init; }
     }
 
     private sealed class MultipleIdentities
     {
         [Key]
-        [Generated(GeneratedKind.Identity)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public long First { get; init; }
 
         [Key]
-        [Generated(GeneratedKind.Identity)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public long Second { get; init; }
     }
 }

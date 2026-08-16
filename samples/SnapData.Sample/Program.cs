@@ -87,7 +87,7 @@ foreach (var book in projectedBooks)
 public sealed class Author
 {
     [Key]
-    [Generated(GeneratedKind.Identity)]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
     public required string Name { get; set; }
@@ -100,7 +100,7 @@ public sealed class Author
 public sealed class Book
 {
     [Key]
-    [Generated(GeneratedKind.Identity)]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
     [Column("author_id")]

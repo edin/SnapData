@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
 namespace SnapData;
@@ -40,15 +42,15 @@ public sealed class EntityMappingProvider : IEntityMappingProvider
             .ToArray();
 
         foreach (var property in candidates.Where(property =>
-                     property.IsDefined(typeof(IgnoreAttribute), inherit: true)
+                     property.IsDefined(typeof(NotMappedAttribute), inherit: true)
                      && property.IsDefined(typeof(KeyAttribute), inherit: true)))
         {
             throw MappingError(entityType, property,
-                "cannot be marked with both Key and Ignore.");
+                "cannot be marked with both Key and NotMapped.");
         }
 
         var mapped = candidates
-            .Where(property => !property.IsDefined(typeof(IgnoreAttribute), inherit: true)
+            .Where(property => !property.IsDefined(typeof(NotMappedAttribute), inherit: true)
                 && !property.IsDefined(typeof(RelationAttribute), inherit: true))
             .ToArray();
         var hasExplicitKey = mapped.Any(property =>
@@ -79,10 +81,10 @@ public sealed class EntityMappingProvider : IEntityMappingProvider
         PropertyInfo navigation,
         IReadOnlyList<PropertyMapping> properties)
     {
-        if (navigation.IsDefined(typeof(IgnoreAttribute), inherit: true))
+        if (navigation.IsDefined(typeof(NotMappedAttribute), inherit: true))
         {
             throw MappingError(entityType, navigation,
-                "cannot be marked with both Relation and Ignore.");
+                "cannot be marked with both Relation and NotMapped.");
         }
 
         var attribute = navigation.GetCustomAttribute<RelationAttribute>(inherit: true)!;
@@ -179,8 +181,8 @@ public sealed class EntityMappingProvider : IEntityMappingProvider
         var isKey = hasExplicitKey
             ? property.IsDefined(typeof(KeyAttribute), inherit: true)
             : _options.KeyConvention(entityType, property);
-        var generated = property.GetCustomAttribute<GeneratedAttribute>()?.Kind
-            ?? GeneratedKind.Never;
+        var generated = property.GetCustomAttribute<DatabaseGeneratedAttribute>()?.DatabaseGeneratedOption
+            ?? DatabaseGeneratedOption.None;
 
         return new PropertyMapping(
             property,
@@ -229,7 +231,7 @@ public sealed class EntityMappingProvider : IEntityMappingProvider
         }
 
         var identities = mappings.Where(property =>
-            property.Generated == GeneratedKind.Identity).ToArray();
+            property.Generated == DatabaseGeneratedOption.Identity).ToArray();
         if (identities.Length > 1)
         {
             throw new InvalidOperationException(

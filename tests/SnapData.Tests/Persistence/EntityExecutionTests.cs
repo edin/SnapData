@@ -157,7 +157,7 @@ public sealed class EntityExecutionTests
     private sealed class User
     {
         [Key]
-        [Generated(GeneratedKind.Identity)]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public long Id { get; set; }
 
         public required string Name { get; set; }
