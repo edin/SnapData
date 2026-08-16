@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <TestTfmsInParallel>false</TestTfmsInParallel>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -28,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SnapData\SnapData.csproj" />
     <ProjectReference Include="..\..\src\SnapData.Schema\SnapData.Schema.csproj" />
+    <ProjectReference Include="..\..\src\SnapData.Migrations\SnapData.Migrations.csproj" />
   </ItemGroup>
 
 </Project>

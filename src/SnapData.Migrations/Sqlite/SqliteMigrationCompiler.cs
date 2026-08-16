@@ -46,7 +46,8 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         }
 
         if (identities.Length == 1 &&
-            (!identities[0].IsPrimaryKey || identities[0].IsNullable || primaryKeys.Length != 1))
+            (!identities[0].IsPrimaryKey || identities[0].IsNullable || primaryKeys.Length != 1 ||
+             identities[0].Type is not (MigrationColumnType.Int16 or MigrationColumnType.Int32 or MigrationColumnType.Int64)))
         {
             throw new InvalidOperationException(
                 $"SQLite identity column '{identities[0].Name}' must be the single non-nullable primary key.");

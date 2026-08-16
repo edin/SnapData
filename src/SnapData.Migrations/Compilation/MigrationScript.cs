@@ -22,11 +22,6 @@ public sealed class MigrationScript
 
         var snapshot = statements?.ToArray()
             ?? throw new ArgumentNullException(nameof(statements));
-        if (snapshot.Length == 0)
-        {
-            throw new ArgumentException("At least one migration statement is required.", nameof(statements));
-        }
-
         if (snapshot.Any(statement => statement is null))
         {
             throw new ArgumentException("Migration statements cannot contain null values.", nameof(statements));

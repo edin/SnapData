@@ -69,8 +69,6 @@ public sealed class MigrationScriptTests
         Assert.Throws<ArgumentNullException>(() =>
             new MigrationScript("001", MigrationDirection.Up, null!));
         Assert.Throws<ArgumentException>(() =>
-            new MigrationScript("001", MigrationDirection.Up, []));
-        Assert.Throws<ArgumentException>(() =>
             new MigrationScript("001", MigrationDirection.Up, [null!]));
     }
 }
