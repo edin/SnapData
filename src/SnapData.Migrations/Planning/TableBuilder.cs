@@ -9,6 +9,7 @@ public sealed class TableBuilder : IDisposable, IColumnBuilderOwner
     private readonly List<ColumnBuilder> columns = [];
     private readonly List<IndexDefinition> indexes = [];
     private readonly List<ForeignKeyDefinition> foreignKeys = [];
+    private readonly List<CheckConstraintDefinition> checks = [];
     private bool isSealed;
 
     internal TableBuilder(string table, bool ifNotExists = false)
@@ -73,6 +74,12 @@ public sealed class TableBuilder : IDisposable, IColumnBuilderOwner
             name, columns, referencedTable, referencedColumns, onUpdate, onDelete));
     }
 
+    public void Check(string name, string predicate)
+    {
+        EnsureOpen();
+        checks.Add(new CheckConstraintDefinition(name, predicate));
+    }
+
     public void Dispose() => isSealed = true;
 
     internal void EnsureOpen()
@@ -102,7 +109,8 @@ public sealed class TableBuilder : IDisposable, IColumnBuilderOwner
             columns.Select(column => column.Build()),
             indexes,
             foreignKeys,
-            ifNotExists);
+            ifNotExists,
+            checks);
     }
 
     private ColumnBuilder AddColumn(string name, MigrationColumnType type)

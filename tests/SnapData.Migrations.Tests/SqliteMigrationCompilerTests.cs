@@ -47,7 +47,8 @@ public sealed class SqliteMigrationCompilerTests
                 "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 "tenant_id" INTEGER NOT NULL,
                 "role_id" INTEGER NOT NULL,
-                CONSTRAINT "FK_accounts_roles" FOREIGN KEY ("tenant_id", "role_id") REFERENCES "roles" ("tenant_id", "id") ON UPDATE CASCADE ON DELETE SET NULL
+                CONSTRAINT "FK_accounts_roles" FOREIGN KEY ("tenant_id", "role_id") REFERENCES "roles" ("tenant_id", "id") ON UPDATE CASCADE ON DELETE SET NULL,
+                CONSTRAINT "CK_accounts_balance" CHECK ("balance" >= 0)
             )
             """.ReplaceLineEndings(),
             script.Statements[0].Sql.ReplaceLineEndings());
@@ -94,6 +95,7 @@ public sealed class SqliteMigrationCompilerTests
             table.ForeignKey(
                 null, ["tenant_id", "parent_id"], "parents", ["tenant_id", "id"],
                 onDelete: ReferentialAction.Cascade);
+            table.Check("CK_children_valid", "1 = 1");
             table.Index("IX_children_parent", "tenant_id", "parent_id");
         }
 
@@ -219,6 +221,11 @@ public sealed class SqliteMigrationCompilerTests
         setDefaultPlan.SetColumnDefault("users", "active", true);
         var dropDefaultPlan = new MigrationPlan();
         dropDefaultPlan.DropColumnDefault("users", "active");
+        var addCheckPlan = new MigrationPlan();
+        addCheckPlan.AddCheck(
+            "users", new CheckConstraintDefinition("CK_users_valid", "1 = 1"));
+        var dropCheckPlan = new MigrationPlan();
+        dropCheckPlan.DropCheck("users", "CK_users_valid");
 
         foreach (var plan in new[]
                  {
@@ -226,7 +233,9 @@ public sealed class SqliteMigrationCompilerTests
                      addForeignKeyPlan,
                      dropForeignKeyPlan,
                      setDefaultPlan,
-                     dropDefaultPlan
+                     dropDefaultPlan,
+                     addCheckPlan,
+                     dropCheckPlan
                  })
         {
             var exception = Assert.Throws<NotSupportedException>(() =>
@@ -319,6 +328,7 @@ public sealed class SqliteMigrationCompilerTests
                 ["tenant_id", "id"],
                 onUpdate: ReferentialAction.Cascade,
                 onDelete: ReferentialAction.SetNull);
+            table.Check("CK_accounts_balance", "\"balance\" >= 0");
             table.Index(null, "name", IndexColumn.Desc("created_at"));
             table.Unique("UX_accounts_tenant_name", "tenant_id", "name");
         }

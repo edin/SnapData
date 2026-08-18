@@ -19,13 +19,15 @@ public sealed record CreateTableOperation : MigrationOperation
         IEnumerable<ColumnDefinition> columns,
         IEnumerable<IndexDefinition>? indexes = null,
         IEnumerable<ForeignKeyDefinition>? foreignKeys = null,
-        bool ifNotExists = false)
+        bool ifNotExists = false,
+        IEnumerable<CheckConstraintDefinition>? checks = null)
     {
         Table = RequiredName(table, nameof(table));
         Columns = Array.AsReadOnly(columns?.ToArray()
             ?? throw new ArgumentNullException(nameof(columns)));
         Indexes = Array.AsReadOnly(indexes?.ToArray() ?? []);
         ForeignKeys = Array.AsReadOnly(foreignKeys?.ToArray() ?? []);
+        Checks = Array.AsReadOnly(checks?.ToArray() ?? []);
         IfNotExists = ifNotExists;
         EnsureUnique(Columns.Select(column => column.Name), "column");
         EnsureUnique(
@@ -34,6 +36,11 @@ public sealed record CreateTableOperation : MigrationOperation
         EnsureUnique(
             ForeignKeys.Where(key => key.Name is not null).Select(key => key.Name!),
             "foreign key");
+        EnsureUnique(Checks.Select(check => check.Name), "check constraint");
+        EnsureUnique(
+            ForeignKeys.Where(key => key.Name is not null).Select(key => key.Name!)
+                .Concat(Checks.Select(check => check.Name)),
+            "constraint");
 
         var columnNames = Columns.Select(column => column.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -57,6 +64,7 @@ public sealed record CreateTableOperation : MigrationOperation
     public IReadOnlyList<ColumnDefinition> Columns { get; }
     public IReadOnlyList<IndexDefinition> Indexes { get; }
     public IReadOnlyList<ForeignKeyDefinition> ForeignKeys { get; }
+    public IReadOnlyList<CheckConstraintDefinition> Checks { get; }
     public bool IfNotExists { get; }
 
     private static string RequiredName(string value, string parameter) =>
@@ -122,5 +130,13 @@ public sealed record AddForeignKeyOperation(
 public sealed record DropForeignKeyOperation(
     string Table,
     string ForeignKey) : MigrationOperation;
+
+public sealed record AddCheckConstraintOperation(
+    string Table,
+    CheckConstraintDefinition Check) : MigrationOperation;
+
+public sealed record DropCheckConstraintOperation(
+    string Table,
+    string Check) : MigrationOperation;
 
 public sealed record ExecuteSqlOperation(string Sql) : MigrationOperation;

@@ -48,6 +48,9 @@ public sealed class MySqlMigrationCompiler : RelationalMigrationCompiler
     protected override string CompileDropForeignKey(DropForeignKeyOperation operation) =>
         $"ALTER TABLE {QuoteTable(operation.Table)} DROP FOREIGN KEY {QuoteIdentifier(operation.ForeignKey)}";
 
+    protected override string CompileDropCheck(DropCheckConstraintOperation operation) =>
+        $"ALTER TABLE {QuoteTable(operation.Table)} DROP CHECK {QuoteIdentifier(operation.Check)}";
+
     protected override string CompileRenameTable(RenameTableOperation operation) =>
         $"RENAME TABLE {QuoteTable(operation.Table)} TO {QuoteIdentifier(RenameTarget(operation.NewName))}";
 

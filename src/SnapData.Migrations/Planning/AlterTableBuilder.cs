@@ -140,6 +140,20 @@ public sealed class AlterTableBuilder : IDisposable, IColumnBuilderOwner
             table, RequiredName(name, nameof(name))));
     }
 
+    public void AddCheck(string name, string predicate)
+    {
+        EnsureOpen();
+        entries.Add(new AddCheckConstraintOperation(
+            table, new CheckConstraintDefinition(name, predicate)));
+    }
+
+    public void DropCheck(string name)
+    {
+        EnsureOpen();
+        entries.Add(new DropCheckConstraintOperation(
+            table, RequiredName(name, nameof(name))));
+    }
+
     public void Dispose() => isSealed = true;
 
     void IColumnBuilderOwner.EnsureOpen() => EnsureOpen();

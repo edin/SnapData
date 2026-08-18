@@ -71,6 +71,7 @@ public sealed class MigrationCompilerIntegrationTests
             table.String("name", 80);
             table.Boolean("active").Default(true);
             table.Int64("parent_id").Nullable();
+            table.Check($"ck_{tableName}_valid", "1 = 1");
             table.Index($"ix_{tableName}_name", "name");
         }
 
@@ -115,6 +116,25 @@ public sealed class MigrationCompilerIntegrationTests
             dropDefault.DropColumnDefault(tableName, "active");
             foreach (var statement in migrationCompiler.Compile(
                 "smoke-drop-default", MigrationDirection.Up, dropDefault).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var checkName = $"ck_{tableName}_runtime";
+            var addCheck = new MigrationPlan();
+            addCheck.AddCheck(
+                tableName,
+                new CheckConstraintDefinition(checkName, "1 = 1"));
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-add-check", MigrationDirection.Up, addCheck).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var dropCheck = new MigrationPlan();
+            dropCheck.DropCheck(tableName, checkName);
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-drop-check", MigrationDirection.Down, dropCheck).Statements)
             {
                 await session.ExecuteAsync(statement.Sql);
             }

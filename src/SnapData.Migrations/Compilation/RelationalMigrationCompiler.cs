@@ -92,6 +92,12 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
     protected virtual string CompileDropForeignKey(DropForeignKeyOperation operation) =>
         $"ALTER TABLE {QuoteTable(operation.Table)} DROP CONSTRAINT {QuoteIdentifier(operation.ForeignKey)}";
 
+    protected virtual string CompileAddCheck(AddCheckConstraintOperation operation) =>
+        $"ALTER TABLE {QuoteTable(operation.Table)} ADD {CompileCheck(operation.Check)}";
+
+    protected virtual string CompileDropCheck(DropCheckConstraintOperation operation) =>
+        $"ALTER TABLE {QuoteTable(operation.Table)} DROP CONSTRAINT {QuoteIdentifier(operation.Check)}";
+
     protected virtual IEnumerable<string> CompileCreateTableIfNotExists(
         CreateTableOperation operation,
         string createTableSql,
@@ -134,6 +140,8 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
                 CompileAddForeignKey(addForeignKey)),
             DropForeignKeyOperation dropForeignKey => Single(
                 CompileDropForeignKey(dropForeignKey)),
+            AddCheckConstraintOperation addCheck => Single(CompileAddCheck(addCheck)),
+            DropCheckConstraintOperation dropCheck => Single(CompileDropCheck(dropCheck)),
             ExecuteSqlOperation executeSql => Single(executeSql.Sql),
             _ => throw new NotSupportedException(
                 $"{ProviderName} does not support migration operation '{operation.GetType().Name}'.")
@@ -167,6 +175,7 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
                 $"PRIMARY KEY ({string.Join(", ", primaryKeys.Select(column => QuoteIdentifier(column.Name)))})");
         }
         definitions.AddRange(operation.ForeignKeys.Select(CompileForeignKey));
+        definitions.AddRange(operation.Checks.Select(CompileCheck));
 
         var sql = new StringBuilder()
             .Append("CREATE TABLE ").Append(QuoteTable(operation.Table)).AppendLine(" (")
@@ -227,6 +236,9 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
         AppendAction(sql, "DELETE", foreignKey.OnDelete);
         return sql.ToString();
     }
+
+    protected string CompileCheck(CheckConstraintDefinition check) =>
+        $"CONSTRAINT {QuoteIdentifier(check.Name)} CHECK ({check.Predicate})";
 
     private void AppendAction(StringBuilder sql, string operation, ReferentialAction action)
     {

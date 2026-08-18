@@ -35,6 +35,7 @@ public sealed class MigrationPlanTests
                 "accounts",
                 ["id"],
                 onDelete: ReferentialAction.Cascade);
+            table.Check("CK_users_valid", "1 = 1");
         }
 
         var operation = Assert.IsType<CreateTableOperation>(
@@ -52,6 +53,7 @@ public sealed class MigrationPlanTests
         Assert.Equal(
             ReferentialAction.Cascade,
             Assert.Single(operation.ForeignKeys).OnDelete);
+        Assert.Equal("1 = 1", Assert.Single(operation.Checks).Predicate);
     }
 
     [Fact]
@@ -160,6 +162,26 @@ public sealed class MigrationPlanTests
             operation => Assert.Equal(
                 "IX_users_email",
                 Assert.IsType<CreateIndexOperation>(operation).Index.Name));
+    }
+
+    [Fact]
+    public void Alter_table_builds_named_check_constraint_operations()
+    {
+        var migration = new MigrationPlan();
+        using (var table = migration.AlterTable("products"))
+        {
+            table.AddCheck("CK_products_price", "price >= 0");
+            table.DropCheck("CK_products_legacy");
+        }
+
+        Assert.Collection(
+            migration.Operations,
+            operation => Assert.Equal(
+                "price >= 0",
+                Assert.IsType<AddCheckConstraintOperation>(operation).Check.Predicate),
+            operation => Assert.Equal(
+                "CK_products_legacy",
+                Assert.IsType<DropCheckConstraintOperation>(operation).Check));
     }
 
     [Fact]

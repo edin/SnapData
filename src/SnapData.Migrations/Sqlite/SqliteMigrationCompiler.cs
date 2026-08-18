@@ -37,6 +37,8 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
             DropColumnDefaultOperation => throw UnsupportedTableRebuild("drop a column default"),
             AddForeignKeyOperation => throw UnsupportedTableRebuild("add a foreign key"),
             DropForeignKeyOperation => throw UnsupportedTableRebuild("drop a foreign key"),
+            AddCheckConstraintOperation => throw UnsupportedTableRebuild("add a check constraint"),
+            DropCheckConstraintOperation => throw UnsupportedTableRebuild("drop a check constraint"),
             ExecuteSqlOperation executeSql => Single(executeSql.Sql),
             _ => throw new NotSupportedException(
                 $"SQLite does not support migration operation '{operation.GetType().Name}'.")
@@ -93,6 +95,7 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         }
 
         definitions.AddRange(operation.ForeignKeys.Select(CompileForeignKey));
+        definitions.AddRange(operation.Checks.Select(CompileCheck));
 
         var createSql = new StringBuilder()
             .Append("CREATE TABLE ")
@@ -163,6 +166,9 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         AppendReferentialAction(sql, "DELETE", foreignKey.OnDelete);
         return sql.ToString();
     }
+
+    private static string CompileCheck(CheckConstraintDefinition check) =>
+        $"CONSTRAINT {Quote(check.Name)} CHECK ({check.Predicate})";
 
     private static string CompileIndex(
         string table,

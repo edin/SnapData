@@ -185,3 +185,20 @@ public sealed record ForeignKeyDefinition
             ? throw new ArgumentException("A name is required.", parameter)
             : value;
 }
+
+public sealed record CheckConstraintDefinition
+{
+    public CheckConstraintDefinition(string name, string predicate)
+    {
+        Name = string.IsNullOrWhiteSpace(name)
+            ? throw new ArgumentException("A check-constraint name is required.", nameof(name))
+            : name;
+        Predicate = string.IsNullOrWhiteSpace(predicate)
+            ? throw new ArgumentException("A check-constraint predicate is required.", nameof(predicate))
+            : predicate;
+    }
+
+    public string Name { get; }
+
+    public string Predicate { get; }
+}

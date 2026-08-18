@@ -143,6 +143,18 @@ public sealed class MigrationPlan
             Required(table, nameof(table)),
             Required(foreignKey, nameof(foreignKey))));
 
+    public void AddCheck(string table, CheckConstraintDefinition check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+        entries.Add(new AddCheckConstraintOperation(
+            Required(table, nameof(table)), check));
+    }
+
+    public void DropCheck(string table, string check) =>
+        entries.Add(new DropCheckConstraintOperation(
+            Required(table, nameof(table)),
+            Required(check, nameof(check))));
+
     public void ExecuteSql(string sql) =>
         entries.Add(new ExecuteSqlOperation(Required(sql, nameof(sql))));
 
