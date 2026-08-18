@@ -5,6 +5,34 @@ namespace SnapData.Migrations.Tests;
 
 public sealed class ProviderMigrationCompilerTests
 {
+    public static TheoryData<IMigrationCompiler, string, int, string[]> ConditionalCreateCases => new()
+    {
+        {
+            new SqlServerMigrationCompiler(),
+            "app.users",
+            1,
+            ["IF OBJECT_ID(N'[app].[users]', N'U') IS NULL", "CREATE TABLE [app].[users]", "CREATE INDEX [IX_users_name]"]
+        },
+        {
+            new PostgresMigrationCompiler(),
+            "app.users",
+            2,
+            ["CREATE TABLE IF NOT EXISTS \"app\".\"users\"", "CREATE INDEX IF NOT EXISTS \"IX_users_name\""]
+        },
+        {
+            new MySqlMigrationCompiler(),
+            "app.users",
+            1,
+            ["CREATE TABLE IF NOT EXISTS `app`.`users`", "INDEX `IX_users_name` (`name` ASC)"]
+        },
+        {
+            new FirebirdMigrationCompiler(),
+            "users",
+            1,
+            ["EXECUTE BLOCK AS", "RDB$RELATION_NAME = 'users'", "EXECUTE STATEMENT 'CREATE TABLE \"users\"", "EXECUTE STATEMENT 'CREATE INDEX \"IX_users_name\""]
+        }
+    };
+
     public static TheoryData<IMigrationCompiler, string, string, string[]> CreateTableCases => new()
     {
         {
@@ -52,6 +80,31 @@ public sealed class ProviderMigrationCompilerTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(ConditionalCreateCases))]
+    public void Compilers_generate_self_contained_create_table_if_not_exists_sql(
+        IMigrationCompiler compiler,
+        string tableName,
+        int expectedStatements,
+        string[] expectedFragments)
+    {
+        var plan = new MigrationPlan();
+        using (var table = plan.CreateTableIfNotExists(tableName))
+        {
+            table.Identity();
+            table.String("name", 120);
+            table.Index("IX_users_name", "name");
+        }
+
+        var script = compiler.Compile("001", MigrationDirection.Up, plan);
+
+        Assert.Equal(expectedStatements, script.Statements.Count);
+        foreach (var fragment in expectedFragments)
+        {
+            Assert.Contains(fragment, script.ToString());
+        }
+    }
+
     [Fact]
     public void Provider_specific_alter_syntax_is_preserved()
     {
@@ -78,6 +131,399 @@ public sealed class ProviderMigrationCompilerTests
                 .Statements.Select(statement => statement.Sql));
     }
 
+    public static TheoryData<IMigrationCompiler, string, string[]> AlterColumnCases => new()
+    {
+        {
+            new SqlServerMigrationCompiler(),
+            "app.users",
+            ["ALTER TABLE [app].[users] ALTER COLUMN [name] NVARCHAR(150) NULL"]
+        },
+        {
+            new PostgresMigrationCompiler(),
+            "app.users",
+            [
+                "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"name\" TYPE VARCHAR(150)",
+                "ALTER TABLE \"app\".\"users\" ALTER COLUMN \"name\" DROP NOT NULL"
+            ]
+        },
+        {
+            new MySqlMigrationCompiler(),
+            "app.users",
+            ["ALTER TABLE `app`.`users` MODIFY COLUMN `name` VARCHAR(150)"]
+        },
+        {
+            new FirebirdMigrationCompiler(),
+            "users",
+            [
+                "ALTER TABLE \"users\" ALTER COLUMN \"name\" TYPE VARCHAR(150)",
+                "ALTER TABLE \"users\" ALTER COLUMN \"name\" DROP NOT NULL"
+            ]
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(AlterColumnCases))]
+    public void Compilers_generate_native_column_alterations(
+        IMigrationCompiler compiler,
+        string tableName,
+        string[] expectedSql)
+    {
+        var plan = new MigrationPlan();
+        using (var table = plan.AlterTable(tableName))
+        {
+            table.String("name", 150).Nullable().Change();
+        }
+
+        Assert.Equal(
+            expectedSql,
+            compiler.Compile("001", MigrationDirection.Up, plan)
+                .Statements.Select(statement => statement.Sql));
+    }
+
+    [Fact]
+    public void Compilers_generate_explicit_set_and_drop_default_operations()
+    {
+        var plan = new MigrationPlan();
+        using (var table = plan.AlterTable("users"))
+        {
+            table.SetDefault("active", true);
+            table.DropDefault("legacy_status");
+        }
+
+        Assert.Equal(
+            [
+                "ALTER TABLE \"users\" ALTER COLUMN \"active\" SET DEFAULT TRUE",
+                "ALTER TABLE \"users\" ALTER COLUMN \"legacy_status\" DROP DEFAULT"
+            ],
+            new PostgresMigrationCompiler().Compile("001", MigrationDirection.Up, plan)
+                .Statements.Select(statement => statement.Sql));
+        Assert.Equal(
+            [
+                "ALTER TABLE `users` ALTER COLUMN `active` SET DEFAULT TRUE",
+                "ALTER TABLE `users` ALTER COLUMN `legacy_status` DROP DEFAULT"
+            ],
+            new MySqlMigrationCompiler().Compile("001", MigrationDirection.Up, plan)
+                .Statements.Select(statement => statement.Sql));
+        Assert.Equal(
+            [
+                "ALTER TABLE \"users\" ALTER COLUMN \"active\" SET DEFAULT TRUE",
+                "ALTER TABLE \"users\" ALTER COLUMN \"legacy_status\" DROP DEFAULT"
+            ],
+            new FirebirdMigrationCompiler().Compile("001", MigrationDirection.Up, plan)
+                .Statements.Select(statement => statement.Sql));
+
+        var sqlServer = new SqlServerMigrationCompiler()
+            .Compile("001", MigrationDirection.Up, plan).Statements;
+        Assert.Equal(3, sqlServer.Count);
+        Assert.Contains("sys.default_constraints", sqlServer[0].Sql);
+        Assert.Equal(
+            "ALTER TABLE [users] ADD DEFAULT 1 FOR [active]",
+            sqlServer[1].Sql);
+        Assert.Contains("c.name = N'legacy_status'", sqlServer[2].Sql);
+    }
+
+    [Fact]
+    public void Alter_column_rejects_constraint_and_default_changes()
+    {
+        var constraintPlan = new MigrationPlan();
+        constraintPlan.AlterColumn("users", new ColumnDefinition(
+            "id", MigrationColumnType.Int64, IsIdentity: true));
+
+        foreach (var compiler in new IMigrationCompiler[]
+                 {
+                     new SqlServerMigrationCompiler(),
+                     new PostgresMigrationCompiler(),
+                     new MySqlMigrationCompiler(),
+                     new FirebirdMigrationCompiler()
+                 })
+        {
+            Assert.Throws<NotSupportedException>(() =>
+                compiler.Compile("001", MigrationDirection.Up, constraintPlan));
+        }
+
+        var defaultPlan = new MigrationPlan();
+        using (var table = defaultPlan.AlterTable("users"))
+        {
+            table.Boolean("active").Default(true).Change();
+        }
+        foreach (var compiler in new IMigrationCompiler[]
+                 {
+                     new SqlServerMigrationCompiler(),
+                     new PostgresMigrationCompiler(),
+                     new MySqlMigrationCompiler(),
+                     new FirebirdMigrationCompiler()
+                 })
+        {
+            Assert.Throws<NotSupportedException>(() =>
+                compiler.Compile("001", MigrationDirection.Up, defaultPlan));
+        }
+    }
+
+    public static TheoryData<IMigrationCompiler, string, string[]> StandaloneIndexCases => new()
+    {
+        {
+            new SqlServerMigrationCompiler(),
+            "app.users",
+            [
+                "CREATE UNIQUE INDEX [UX_users_email] ON [app].[users] ([email] ASC)",
+                "DROP INDEX [UX_users_email] ON [app].[users]"
+            ]
+        },
+        {
+            new PostgresMigrationCompiler(),
+            "app.users",
+            [
+                "CREATE UNIQUE INDEX \"UX_users_email\" ON \"app\".\"users\" (\"email\" ASC)",
+                "DROP INDEX \"app\".\"UX_users_email\""
+            ]
+        },
+        {
+            new MySqlMigrationCompiler(),
+            "app.users",
+            [
+                "CREATE UNIQUE INDEX `UX_users_email` ON `app`.`users` (`email` ASC)",
+                "DROP INDEX `UX_users_email` ON `app`.`users`"
+            ]
+        },
+        {
+            new FirebirdMigrationCompiler(),
+            "users",
+            [
+                "CREATE UNIQUE INDEX \"UX_users_email\" ON \"users\" (\"email\")",
+                "DROP INDEX \"UX_users_email\""
+            ]
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(StandaloneIndexCases))]
+    public void Compilers_generate_standalone_create_and_drop_indexes(
+        IMigrationCompiler compiler,
+        string table,
+        string[] expectedSql)
+    {
+        var plan = new MigrationPlan();
+        plan.CreateIndex(
+            table,
+            new IndexDefinition("UX_users_email", ["email"], isUnique: true));
+        plan.DropIndex(table, "UX_users_email");
+
+        Assert.Equal(
+            expectedSql,
+            compiler.Compile("001", MigrationDirection.Up, plan)
+                .Statements.Select(statement => statement.Sql));
+    }
+
+    public static TheoryData<IMigrationCompiler, string, string[]> StandaloneForeignKeyCases => new()
+    {
+        {
+            new SqlServerMigrationCompiler(),
+            "app.users",
+            [
+                "ALTER TABLE [app].[users] ADD CONSTRAINT [FK_users_accounts] FOREIGN KEY ([account_id]) REFERENCES [app].[accounts] ([id]) ON UPDATE NO ACTION ON DELETE CASCADE",
+                "ALTER TABLE [app].[users] DROP CONSTRAINT [FK_users_accounts]"
+            ]
+        },
+        {
+            new PostgresMigrationCompiler(),
+            "app.users",
+            [
+                "ALTER TABLE \"app\".\"users\" ADD CONSTRAINT \"FK_users_accounts\" FOREIGN KEY (\"account_id\") REFERENCES \"app\".\"accounts\" (\"id\") ON UPDATE RESTRICT ON DELETE CASCADE",
+                "ALTER TABLE \"app\".\"users\" DROP CONSTRAINT \"FK_users_accounts\""
+            ]
+        },
+        {
+            new MySqlMigrationCompiler(),
+            "app.users",
+            [
+                "ALTER TABLE `app`.`users` ADD CONSTRAINT `FK_users_accounts` FOREIGN KEY (`account_id`) REFERENCES `app`.`accounts` (`id`) ON UPDATE RESTRICT ON DELETE CASCADE",
+                "ALTER TABLE `app`.`users` DROP FOREIGN KEY `FK_users_accounts`"
+            ]
+        },
+        {
+            new FirebirdMigrationCompiler(),
+            "users",
+            [
+                "ALTER TABLE \"users\" ADD CONSTRAINT \"FK_users_accounts\" FOREIGN KEY (\"account_id\") REFERENCES \"accounts\" (\"id\") ON UPDATE RESTRICT ON DELETE CASCADE",
+                "ALTER TABLE \"users\" DROP CONSTRAINT \"FK_users_accounts\""
+            ]
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(StandaloneForeignKeyCases))]
+    public void Compilers_generate_standalone_add_and_drop_foreign_keys(
+        IMigrationCompiler compiler,
+        string table,
+        string[] expectedSql)
+    {
+        var referencedTable = table.Contains('.') ? "app.accounts" : "accounts";
+        var plan = new MigrationPlan();
+        plan.AddForeignKey(
+            table,
+            new ForeignKeyDefinition(
+                "FK_users_accounts",
+                ["account_id"],
+                referencedTable,
+                ["id"],
+                ReferentialAction.Restrict,
+                ReferentialAction.Cascade));
+        plan.DropForeignKey(table, "FK_users_accounts");
+
+        Assert.Equal(
+            expectedSql,
+            compiler.Compile("001", MigrationDirection.Up, plan)
+                .Statements.Select(statement => statement.Sql));
+    }
+
+    public static TheoryData<IMigrationCompiler, string, string> RenameTableCases => new()
+    {
+        {
+            new SqliteMigrationCompiler(),
+            "users",
+            "ALTER TABLE \"users\" RENAME TO \"members\""
+        },
+        {
+            new SqlServerMigrationCompiler(),
+            "app.users",
+            "EXEC sp_rename N'[app].[users]', N'members', N'OBJECT'"
+        },
+        {
+            new PostgresMigrationCompiler(),
+            "app.users",
+            "ALTER TABLE \"app\".\"users\" RENAME TO \"members\""
+        },
+        {
+            new MySqlMigrationCompiler(),
+            "app.users",
+            "RENAME TABLE `app`.`users` TO `members`"
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(RenameTableCases))]
+    public void Compilers_generate_provider_specific_table_renames(
+        IMigrationCompiler compiler,
+        string oldName,
+        string expectedSql)
+    {
+        var plan = new MigrationPlan();
+        plan.RenameTable(oldName, "members");
+
+        Assert.Equal(
+            expectedSql,
+            Assert.Single(compiler.Compile(
+                "001", MigrationDirection.Up, plan).Statements).Sql);
+    }
+
+    [Fact]
+    public void Rename_table_rejects_nonportable_targets_and_unsupported_firebird()
+    {
+        var qualifiedTarget = new MigrationPlan();
+        qualifiedTarget.RenameTable("app.users", "other.members");
+        Assert.Throws<ArgumentException>(() =>
+            new PostgresMigrationCompiler().Compile(
+                "001", MigrationDirection.Up, qualifiedTarget));
+
+        var firebird = new MigrationPlan();
+        firebird.RenameTable("users", "members");
+        Assert.Throws<NotSupportedException>(() =>
+            new FirebirdMigrationCompiler().Compile(
+                "001", MigrationDirection.Up, firebird));
+    }
+
+    [Theory]
+    [InlineData("sqlserver")]
+    [InlineData("postgres")]
+    [InlineData("mysql")]
+    [InlineData("firebird")]
+    public void Conditional_add_columns_compile_with_canonical_visible_conditions(
+        string provider)
+    {
+        IMigrationCompiler compiler = provider switch
+        {
+            "sqlserver" => new SqlServerMigrationCompiler(),
+            "postgres" => new PostgresMigrationCompiler(),
+            "mysql" => new MySqlMigrationCompiler(),
+            "firebird" => new FirebirdMigrationCompiler(),
+            _ => throw new ArgumentOutOfRangeException(nameof(provider))
+        };
+        var plan = new MigrationPlan();
+        using (var table = plan.AlterTable("users"))
+        {
+            table.IfNotExists().String("email", 250).Nullable();
+        }
+
+        var sql = Assert.Single(compiler.Compile(
+            "001", MigrationDirection.Up, plan).Statements).Sql;
+
+        Assert.StartsWith(
+            "/* SnapData: IF COLUMN NOT EXISTS users.email */",
+            sql);
+        Assert.Contains("ALTER TABLE", sql);
+    }
+
+    [Theory]
+    [InlineData("sqlserver")]
+    [InlineData("postgres")]
+    [InlineData("mysql")]
+    [InlineData("firebird")]
+    public void Conditional_indexes_compile_with_canonical_visible_conditions(
+        string provider)
+    {
+        IMigrationCompiler compiler = provider switch
+        {
+            "sqlserver" => new SqlServerMigrationCompiler(),
+            "postgres" => new PostgresMigrationCompiler(),
+            "mysql" => new MySqlMigrationCompiler(),
+            "firebird" => new FirebirdMigrationCompiler(),
+            _ => throw new ArgumentOutOfRangeException(nameof(provider))
+        };
+        var plan = new MigrationPlan();
+        using (var table = plan.AlterTable("users"))
+        {
+            table.IfNotExists().CreateIndex("IX_users_email", "email");
+            table.IfExists().DropIndex("IX_users_old");
+        }
+
+        var statements = compiler.Compile(
+            "001", MigrationDirection.Up, plan).Statements;
+
+        Assert.StartsWith(
+            "/* SnapData: IF INDEX NOT EXISTS users.IX_users_email */",
+            statements[0].Sql);
+        Assert.StartsWith(
+            "/* SnapData: IF INDEX EXISTS users.IX_users_old */",
+            statements[1].Sql);
+    }
+
+    [Theory]
+    [InlineData("sqlite")]
+    [InlineData("sqlserver")]
+    [InlineData("postgres")]
+    [InlineData("mysql")]
+    [InlineData("firebird")]
+    public void Drop_table_if_exists_has_portable_visible_condition(string provider)
+    {
+        IMigrationCompiler compiler = provider switch
+        {
+            "sqlite" => new SqliteMigrationCompiler(),
+            "sqlserver" => new SqlServerMigrationCompiler(),
+            "postgres" => new PostgresMigrationCompiler(),
+            "mysql" => new MySqlMigrationCompiler(),
+            "firebird" => new FirebirdMigrationCompiler(),
+            _ => throw new ArgumentOutOfRangeException(nameof(provider))
+        };
+        var plan = new MigrationPlan();
+        plan.DropTableIfExists("users");
+
+        var sql = Assert.Single(compiler.Compile(
+            "001", MigrationDirection.Up, plan).Statements).Sql;
+
+        Assert.StartsWith("/* SnapData: IF TABLE EXISTS users */", sql);
+        Assert.Contains("DROP TABLE", sql);
+    }
+
     [Fact]
     public void Firebird_rejects_mixed_index_directions()
     {
@@ -97,6 +543,10 @@ public sealed class ProviderMigrationCompilerTests
     public void Dialects_generate_provider_specific_history_ddl()
     {
         Assert.Contains("[migration_id] NVARCHAR(250)",
+            SqlServerMigrationDialect.Instance.CreateHistoryTableSql("app.history"));
+        Assert.Contains("[applied_order] BIGINT NOT NULL UNIQUE",
+            SqlServerMigrationDialect.Instance.CreateHistoryTableSql("app.history"));
+        Assert.Contains("[fingerprint] CHAR(64) NULL",
             SqlServerMigrationDialect.Instance.CreateHistoryTableSql("app.history"));
         Assert.Contains("\"migration_id\" VARCHAR(250)",
             PostgresMigrationDialect.Instance.CreateHistoryTableSql("app.history"));

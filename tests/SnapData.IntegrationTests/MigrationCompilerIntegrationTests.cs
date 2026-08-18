@@ -65,11 +65,12 @@ public sealed class MigrationCompilerIntegrationTests
     {
         var tableName = $"mig_{Guid.NewGuid():N}"[..16];
         var plan = new MigrationPlan();
-        using (var table = plan.CreateTable(tableName))
+        using (var table = plan.CreateTableIfNotExists(tableName))
         {
             table.Identity();
             table.String("name", 80);
             table.Boolean("active").Default(true);
+            table.Int64("parent_id").Nullable();
             table.Index($"ix_{tableName}_name", "name");
         }
 
@@ -82,10 +83,105 @@ public sealed class MigrationCompilerIntegrationTests
         try
         {
             var script = migrationCompiler.Compile("smoke", MigrationDirection.Up, plan);
-            for (var index = 0; index < script.Statements.Count; index++)
+            for (var run = 0; run < 2; run++)
             {
-                await session.ExecuteAsync(script.Statements[index].Sql);
-                tableCreated |= index == 0;
+                for (var index = 0; index < script.Statements.Count; index++)
+                {
+                    await session.ExecuteAsync(script.Statements[index].Sql);
+                    tableCreated |= index == 0;
+                }
+            }
+
+            var alterColumn = new MigrationPlan();
+            using (var table = alterColumn.AlterTable(tableName))
+            {
+                table.String("name", 120).Nullable().Change();
+            }
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-alter-column", MigrationDirection.Up, alterColumn).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var setDefault = new MigrationPlan();
+            setDefault.SetColumnDefault(tableName, "active", false);
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-set-default", MigrationDirection.Up, setDefault).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var dropDefault = new MigrationPlan();
+            dropDefault.DropColumnDefault(tableName, "active");
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-drop-default", MigrationDirection.Up, dropDefault).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var standaloneIndexName = $"ux_{tableName}_active";
+            var createIndex = new MigrationPlan();
+            createIndex.CreateIndex(
+                tableName,
+                new IndexDefinition(
+                    standaloneIndexName,
+                    ["active"],
+                    isUnique: true));
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-index", MigrationDirection.Up, createIndex).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var dropIndex = new MigrationPlan();
+            dropIndex.DropIndex(tableName, standaloneIndexName);
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-index", MigrationDirection.Down, dropIndex).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var foreignKeyName = $"fk_{tableName}_parent";
+            var addForeignKey = new MigrationPlan();
+            addForeignKey.AddForeignKey(
+                tableName,
+                new ForeignKeyDefinition(
+                    foreignKeyName,
+                    ["parent_id"],
+                    tableName,
+                    ["id"]));
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-foreign-key", MigrationDirection.Up, addForeignKey).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            var dropForeignKey = new MigrationPlan();
+            dropForeignKey.DropForeignKey(tableName, foreignKeyName);
+            foreach (var statement in migrationCompiler.Compile(
+                "smoke-foreign-key", MigrationDirection.Down, dropForeignKey).Statements)
+            {
+                await session.ExecuteAsync(statement.Sql);
+            }
+
+            if (migrationCompiler is not FirebirdMigrationCompiler)
+            {
+                var renamedTable = $"ren_{tableName}";
+                var rename = new MigrationPlan();
+                rename.RenameTable(tableName, renamedTable);
+                foreach (var statement in migrationCompiler.Compile(
+                    "smoke-rename", MigrationDirection.Up, rename).Statements)
+                {
+                    await session.ExecuteAsync(statement.Sql);
+                }
+
+                var renameBack = new MigrationPlan();
+                renameBack.RenameTable(renamedTable, tableName);
+                foreach (var statement in migrationCompiler.Compile(
+                    "smoke-rename", MigrationDirection.Down, renameBack).Statements)
+                {
+                    await session.ExecuteAsync(statement.Sql);
+                }
             }
         }
         finally
@@ -126,7 +222,8 @@ public sealed class MigrationCompilerIntegrationTests
                 HistoryTable = historyName,
                 Locking = dialect.MigrationLock is null
                     ? MigrationLocking.Disabled
-                    : MigrationLocking.Required
+                    : MigrationLocking.Required,
+                RollbackPolicy = MigrationRollbackPolicy.Enabled
             });
         try
         {
@@ -157,11 +254,27 @@ public sealed class MigrationCompilerIntegrationTests
 
         public override void Up(MigrationPlan migration)
         {
-            using var table = migration.CreateTable(tableName);
-            table.Identity();
-            table.String("name", 80);
+            using (var table = migration.CreateTable(tableName))
+            {
+                table.Identity();
+                table.String("name", 80);
+            }
+            using (var table = migration.AlterTable(tableName))
+            {
+                table.IfNotExists().String("conditional_value", 80).Nullable();
+                table.IfNotExists().CreateIndex(
+                    $"ix_{tableName}_conditional", "conditional_value");
+            }
         }
 
-        public override void Down(MigrationPlan migration) => migration.DropTable(tableName);
+        public override void Down(MigrationPlan migration)
+        {
+            using (var table = migration.AlterTable(tableName))
+            {
+                table.IfExists().DropIndex($"ix_{tableName}_conditional");
+                table.IfExists().DropColumn("conditional_value");
+            }
+            migration.DropTableIfExists(tableName);
+        }
     }
 }

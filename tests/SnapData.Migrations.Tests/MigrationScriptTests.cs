@@ -53,6 +53,28 @@ public sealed class MigrationScriptTests
     }
 
     [Fact]
+    public void Fingerprints_depend_only_on_normalized_ordered_statement_sql()
+    {
+        var first = new MigrationScript(
+            "001", MigrationDirection.Up,
+            [new MigrationStatement("select 1\r\nfrom users"), new MigrationStatement("select 2")]);
+        var equivalent = new MigrationScript(
+            "different-id", MigrationDirection.Down,
+            [new MigrationStatement("select 1\nfrom users"), new MigrationStatement("select 2")]);
+        var reordered = new MigrationScript(
+            "001", MigrationDirection.Up,
+            [new MigrationStatement("select 2"), new MigrationStatement("select 1\nfrom users")]);
+        var differentBoundaries = new MigrationScript(
+            "001", MigrationDirection.Up,
+            [new MigrationStatement("select 1\nfrom users\nselect 2")]);
+
+        Assert.Equal(64, first.Fingerprint.Length);
+        Assert.Equal(first.Fingerprint, equivalent.Fingerprint);
+        Assert.NotEqual(first.Fingerprint, reordered.Fingerprint);
+        Assert.NotEqual(first.Fingerprint, differentBoundaries.Fingerprint);
+    }
+
+    [Fact]
     public void Invalid_statements_are_rejected()
     {
         Assert.Throws<ArgumentException>(() => new MigrationStatement(""));

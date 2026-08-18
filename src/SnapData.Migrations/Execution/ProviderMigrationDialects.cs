@@ -6,6 +6,7 @@ public sealed class SqlServerMigrationDialect : IMigrationDialect
 {
     public static SqlServerMigrationDialect Instance { get; } = new();
     private SqlServerMigrationDialect() { }
+    public string ProviderName => Provider.SqlServer;
     public IMigrationCompiler Compiler { get; } = new SqlServerMigrationCompiler();
     public IMigrationLock MigrationLock => SqlServerMigrationLock.Instance;
     public ISchemaInspector CreateSchemaInspector(IDbExecutor executor) =>
@@ -13,7 +14,7 @@ public sealed class SqlServerMigrationDialect : IMigrationDialect
     public string QuoteIdentifier(string value) => $"[{Required(value).Replace("]", "]]", StringComparison.Ordinal)}]";
     public string QuoteTable(string value) => Qualified(value, QuoteIdentifier);
     public string CreateHistoryTableSql(string table) =>
-        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} NVARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_at")} NVARCHAR(40) NOT NULL)";
+        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} NVARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_order")} BIGINT NOT NULL UNIQUE, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL, {QuoteIdentifier("fingerprint")} CHAR(64) NULL)";
 
     private static string Required(string value) => MigrationDialectNames.Required(value);
     private static string Qualified(string value, Func<string, string> quote) =>
@@ -24,6 +25,7 @@ public sealed class PostgresMigrationDialect : IMigrationDialect
 {
     public static PostgresMigrationDialect Instance { get; } = new();
     private PostgresMigrationDialect() { }
+    public string ProviderName => Provider.Postgres;
     public IMigrationCompiler Compiler { get; } = new PostgresMigrationCompiler();
     public IMigrationLock MigrationLock => PostgresMigrationLock.Instance;
     public ISchemaInspector CreateSchemaInspector(IDbExecutor executor) =>
@@ -31,13 +33,14 @@ public sealed class PostgresMigrationDialect : IMigrationDialect
     public string QuoteIdentifier(string value) => $"\"{MigrationDialectNames.Required(value).Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     public string QuoteTable(string value) => MigrationDialectNames.Qualified(value, QuoteIdentifier);
     public string CreateHistoryTableSql(string table) =>
-        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} VARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL)";
+        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} VARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_order")} BIGINT NOT NULL UNIQUE, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL, {QuoteIdentifier("fingerprint")} CHAR(64) NULL)";
 }
 
 public sealed class MySqlMigrationDialect : IMigrationDialect
 {
     public static MySqlMigrationDialect Instance { get; } = new();
     private MySqlMigrationDialect() { }
+    public string ProviderName => Provider.MySql;
     public IMigrationCompiler Compiler { get; } = new MySqlMigrationCompiler();
     public IMigrationLock MigrationLock => MySqlMigrationLock.Instance;
     public ISchemaInspector CreateSchemaInspector(IDbExecutor executor) =>
@@ -45,13 +48,14 @@ public sealed class MySqlMigrationDialect : IMigrationDialect
     public string QuoteIdentifier(string value) => $"`{MigrationDialectNames.Required(value).Replace("`", "``", StringComparison.Ordinal)}`";
     public string QuoteTable(string value) => MigrationDialectNames.Qualified(value, QuoteIdentifier);
     public string CreateHistoryTableSql(string table) =>
-        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} VARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL)";
+        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} VARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_order")} BIGINT NOT NULL UNIQUE, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL, {QuoteIdentifier("fingerprint")} CHAR(64) NULL)";
 }
 
 public sealed class FirebirdMigrationDialect : IMigrationDialect
 {
     public static FirebirdMigrationDialect Instance { get; } = new();
     private FirebirdMigrationDialect() { }
+    public string ProviderName => Provider.Firebird;
     public IMigrationCompiler Compiler { get; } = new FirebirdMigrationCompiler();
     public IMigrationLock? MigrationLock => null;
     public ISchemaInspector CreateSchemaInspector(IDbExecutor executor) =>
@@ -59,7 +63,7 @@ public sealed class FirebirdMigrationDialect : IMigrationDialect
     public string QuoteIdentifier(string value) => $"\"{MigrationDialectNames.Required(value).Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
     public string QuoteTable(string value) => MigrationDialectNames.Qualified(value, QuoteIdentifier);
     public string CreateHistoryTableSql(string table) =>
-        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} VARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL)";
+        $"CREATE TABLE {QuoteTable(table)} ({QuoteIdentifier("migration_id")} VARCHAR(250) NOT NULL PRIMARY KEY, {QuoteIdentifier("applied_order")} BIGINT NOT NULL UNIQUE, {QuoteIdentifier("applied_at")} VARCHAR(40) NOT NULL, {QuoteIdentifier("fingerprint")} CHAR(64))";
 }
 
 internal static class MigrationDialectNames

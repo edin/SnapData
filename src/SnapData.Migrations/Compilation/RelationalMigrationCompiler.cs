@@ -41,8 +41,32 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
     protected virtual string CompileDropColumn(DropColumnOperation operation) =>
         $"ALTER TABLE {QuoteTable(operation.Table)} DROP COLUMN {QuoteIdentifier(operation.Column)}";
 
+    protected virtual string CompileAddColumn(AddColumnOperation operation) =>
+        $"ALTER TABLE {QuoteTable(operation.Table)} ADD {CompileColumn(operation.Column)}";
+
+    protected virtual IEnumerable<string> CompileAlterColumn(AlterColumnOperation operation) =>
+        throw new NotSupportedException(
+            $"{ProviderName} does not support altering columns.");
+
+    protected virtual IEnumerable<string> CompileSetColumnDefault(
+        SetColumnDefaultOperation operation)
+    {
+        yield return $"ALTER TABLE {QuoteTable(operation.Table)} ALTER COLUMN " +
+            $"{QuoteIdentifier(operation.Column)} SET DEFAULT {FormatDefault(operation.Value)}";
+    }
+
+    protected virtual IEnumerable<string> CompileDropColumnDefault(
+        DropColumnDefaultOperation operation)
+    {
+        yield return $"ALTER TABLE {QuoteTable(operation.Table)} ALTER COLUMN " +
+            $"{QuoteIdentifier(operation.Column)} DROP DEFAULT";
+    }
+
     protected virtual string CompileRenameColumn(RenameColumnOperation operation) =>
         $"ALTER TABLE {QuoteTable(operation.Table)} RENAME COLUMN {QuoteIdentifier(operation.Column)} TO {QuoteIdentifier(operation.NewName)}";
+
+    protected virtual string CompileRenameTable(RenameTableOperation operation) =>
+        $"ALTER TABLE {QuoteTable(operation.Table)} RENAME TO {QuoteIdentifier(RenameTarget(operation.NewName))}";
 
     protected virtual string CompileIndex(string table, IndexDefinition index)
     {
@@ -51,6 +75,29 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
             $"{QuoteIdentifier(column.Name)} {(column.Order == MigrationSortOrder.Descending ? "DESC" : "ASC")}"));
         return $"CREATE {(index.IsUnique ? "UNIQUE " : string.Empty)}INDEX {QuoteIdentifier(name)} ON {QuoteTable(table)} ({columns})";
     }
+
+    protected virtual string CompileDropIndex(DropIndexOperation operation) =>
+        $"DROP INDEX {QuoteIdentifier(operation.Index)}";
+
+    protected virtual string CompileAddForeignKey(AddForeignKeyOperation operation)
+    {
+        if (operation.ForeignKey.Name is null)
+        {
+            throw new InvalidOperationException(
+                "A standalone foreign key must have a name.");
+        }
+        return $"ALTER TABLE {QuoteTable(operation.Table)} ADD {CompileForeignKey(operation.ForeignKey)}";
+    }
+
+    protected virtual string CompileDropForeignKey(DropForeignKeyOperation operation) =>
+        $"ALTER TABLE {QuoteTable(operation.Table)} DROP CONSTRAINT {QuoteIdentifier(operation.ForeignKey)}";
+
+    protected virtual IEnumerable<string> CompileCreateTableIfNotExists(
+        CreateTableOperation operation,
+        string createTableSql,
+        IReadOnlyList<string> indexSql) =>
+        throw new NotSupportedException(
+            $"{ProviderName} CreateTableIfNotExists compilation has not been implemented.");
 
     protected virtual string QuoteTable(string table)
     {
@@ -64,17 +111,36 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
         return string.Join(".", parts.Select(QuoteIdentifier));
     }
 
-    private IEnumerable<MigrationStatement> CompileOperation(MigrationOperation operation) =>
-        operation switch
+    private IEnumerable<MigrationStatement> CompileOperation(MigrationOperation operation)
+    {
+        var statements = operation switch
         {
             CreateTableOperation createTable => CompileCreateTable(createTable),
             DropTableOperation dropTable => Single($"DROP TABLE {QuoteTable(dropTable.Table)}"),
+            RenameTableOperation renameTable => Single(CompileRenameTable(renameTable)),
+            AddColumnOperation addColumn => Single(CompileAddColumn(addColumn)),
+            AlterColumnOperation alterColumn => CompileAlterColumn(alterColumn)
+                .Select(sql => new MigrationStatement(sql)),
+            SetColumnDefaultOperation setDefault => CompileSetColumnDefault(setDefault)
+                .Select(sql => new MigrationStatement(sql)),
+            DropColumnDefaultOperation dropDefault => CompileDropColumnDefault(dropDefault)
+                .Select(sql => new MigrationStatement(sql)),
             DropColumnOperation dropColumn => Single(CompileDropColumn(dropColumn)),
             RenameColumnOperation renameColumn => Single(CompileRenameColumn(renameColumn)),
+            CreateIndexOperation createIndex => Single(
+                CompileIndex(createIndex.Table, createIndex.Index)),
+            DropIndexOperation dropIndex => Single(CompileDropIndex(dropIndex)),
+            AddForeignKeyOperation addForeignKey => Single(
+                CompileAddForeignKey(addForeignKey)),
+            DropForeignKeyOperation dropForeignKey => Single(
+                CompileDropForeignKey(dropForeignKey)),
             ExecuteSqlOperation executeSql => Single(executeSql.Sql),
             _ => throw new NotSupportedException(
                 $"{ProviderName} does not support migration operation '{operation.GetType().Name}'.")
         };
+        return statements.Select(statement =>
+            MigrationOperationConditions.Apply(operation, statement));
+    }
 
     private IEnumerable<MigrationStatement> CompileCreateTable(CreateTableOperation operation)
     {
@@ -108,11 +174,16 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
             .Append(string.Join("," + Environment.NewLine + "    ", definitions))
             .AppendLine().Append(')')
             .ToString();
-        yield return new MigrationStatement(sql);
-
-        foreach (var index in operation.Indexes)
+        var createTableSql = sql.ToString();
+        var indexSql = operation.Indexes
+            .Select(index => CompileIndex(operation.Table, index))
+            .ToArray();
+        var statements = operation.IfNotExists
+            ? CompileCreateTableIfNotExists(operation, createTableSql, indexSql)
+            : new[] { createTableSql }.Concat(indexSql);
+        foreach (var statement in statements)
         {
-            yield return new MigrationStatement(CompileIndex(operation.Table, index));
+            yield return new MigrationStatement(statement);
         }
     }
 
@@ -139,7 +210,7 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
         return sql.ToString();
     }
 
-    private string CompileForeignKey(ForeignKeyDefinition foreignKey)
+    protected string CompileForeignKey(ForeignKeyDefinition foreignKey)
     {
         var sql = new StringBuilder();
         if (foreignKey.Name is not null)
@@ -190,10 +261,35 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
 
     protected static string QuoteLiteral(string value) => $"'{value.Replace("'", "''")}'";
 
-    private static string DefaultIndexName(string table, IndexDefinition index)
+    protected static string DefaultIndexName(string table, IndexDefinition index)
+        => MigrationIndexName.Get(table, index);
+
+    protected static string RenameTarget(string newName)
     {
-        var unqualifiedTable = table.Split('.').Last();
-        return $"{(index.IsUnique ? "UX" : "IX")}_{unqualifiedTable}_{string.Join("_", index.Columns.Select(column => column.Name))}";
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+        if (newName.Contains('.', StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "A renamed table's new name must be unqualified. Moving a table between schemas is provider-specific.",
+                nameof(newName));
+        }
+        return newName;
+    }
+
+    protected void EnsureAlterColumnHasNoConstraintChanges(ColumnDefinition column)
+    {
+        if (column.IsPrimaryKey || column.IsUnique || column.IsIdentity)
+        {
+            throw new NotSupportedException(
+                $"{ProviderName} AlterColumn does not change primary-key, unique, or identity constraints. " +
+                "Use the corresponding constraint operation or raw SQL.");
+        }
+        if (column.DefaultValue is not null)
+        {
+            throw new NotSupportedException(
+                $"{ProviderName} AlterColumn does not change column defaults. " +
+                "Use SetDefault or DropDefault as a separate operation.");
+        }
     }
 
     private static IEnumerable<MigrationStatement> Single(string sql)

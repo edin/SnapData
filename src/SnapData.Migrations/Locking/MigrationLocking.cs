@@ -19,12 +19,14 @@ public sealed class MigrationLockContext
         string resource,
         string historyTable,
         TimeSpan timeout,
+        TimeSpan leaseDuration,
         CancellationToken cancellationToken)
     {
         Database = database;
         Resource = resource;
         HistoryTable = historyTable;
         Timeout = timeout;
+        LeaseDuration = leaseDuration;
         CancellationToken = cancellationToken;
     }
 
@@ -32,6 +34,7 @@ public sealed class MigrationLockContext
     public string Resource { get; }
     public string HistoryTable { get; }
     public TimeSpan Timeout { get; }
+    public TimeSpan LeaseDuration { get; }
     public CancellationToken CancellationToken { get; }
 }
 
@@ -40,6 +43,19 @@ public sealed class MigrationLockTimeoutException(string resource, TimeSpan time
 {
     public string Resource { get; } = resource;
     public TimeSpan Timeout { get; } = timeout;
+}
+
+public sealed class MigrationLockLostException(string resource)
+    : InvalidOperationException($"Migration lock '{resource}' was lost while migrations were running.")
+{
+    public string Resource { get; } = resource;
+}
+
+internal interface IMigrationLockStatus
+{
+    void ThrowIfLost();
+
+    ValueTask RenewAsync(CancellationToken cancellationToken);
 }
 
 internal sealed class MigrationLockHandle(

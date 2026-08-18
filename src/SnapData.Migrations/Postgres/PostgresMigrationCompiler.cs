@@ -37,4 +37,41 @@ public sealed class PostgresMigrationCompiler : RelationalMigrationCompiler
 
     protected override string BinaryLiteral(byte[] value) =>
         $"decode('{Convert.ToHexString(value)}', 'hex')";
+
+    protected override IEnumerable<string> CompileAlterColumn(AlterColumnOperation operation)
+    {
+        EnsureAlterColumnHasNoConstraintChanges(operation.Column);
+        var table = QuoteTable(operation.Table);
+        var column = QuoteIdentifier(operation.Column.Name);
+        yield return $"ALTER TABLE {table} ALTER COLUMN {column} TYPE {StoreType(operation.Column)}";
+        yield return $"ALTER TABLE {table} ALTER COLUMN {column} " +
+            (operation.Column.IsNullable ? "DROP NOT NULL" : "SET NOT NULL");
+    }
+
+    protected override string CompileDropIndex(DropIndexOperation operation)
+    {
+        var parts = operation.Table.Split('.', StringSplitOptions.TrimEntries);
+        var index = parts.Length == 2
+            ? $"{QuoteIdentifier(parts[0])}.{QuoteIdentifier(operation.Index)}"
+            : QuoteIdentifier(operation.Index);
+        return $"DROP INDEX {index}";
+    }
+
+    protected override IEnumerable<string> CompileCreateTableIfNotExists(
+        CreateTableOperation operation,
+        string createTableSql,
+        IReadOnlyList<string> indexSql)
+    {
+        yield return createTableSql.Replace(
+            "CREATE TABLE ",
+            "CREATE TABLE IF NOT EXISTS ",
+            StringComparison.Ordinal);
+        foreach (var index in operation.Indexes)
+        {
+            var name = index.Name ?? DefaultIndexName(operation.Table, index);
+            var columns = string.Join(", ", index.Columns.Select(column =>
+                $"{QuoteIdentifier(column.Name)} {(column.Order == MigrationSortOrder.Descending ? "DESC" : "ASC")}"));
+            yield return $"CREATE {(index.IsUnique ? "UNIQUE " : string.Empty)}INDEX IF NOT EXISTS {QuoteIdentifier(name)} ON {QuoteTable(operation.Table)} ({columns})";
+        }
+    }
 }

@@ -2,17 +2,19 @@ using SnapData.Schema;
 
 namespace SnapData.Migrations;
 
-public sealed class TableBuilder : IDisposable
+public sealed class TableBuilder : IDisposable, IColumnBuilderOwner
 {
     private readonly string table;
+    private readonly bool ifNotExists;
     private readonly List<ColumnBuilder> columns = [];
     private readonly List<IndexDefinition> indexes = [];
     private readonly List<ForeignKeyDefinition> foreignKeys = [];
     private bool isSealed;
 
-    internal TableBuilder(string table)
+    internal TableBuilder(string table, bool ifNotExists = false)
     {
         this.table = RequiredName(table, nameof(table));
+        this.ifNotExists = ifNotExists;
     }
 
     public bool IsSealed => isSealed;
@@ -81,6 +83,12 @@ public sealed class TableBuilder : IDisposable
         }
     }
 
+    void IColumnBuilderOwner.EnsureOpen() => EnsureOpen();
+
+    void IColumnBuilderOwner.MarkChanged(ColumnBuilder column) =>
+        throw new InvalidOperationException(
+            "Change() can only be used inside an AlterTable scope.");
+
     internal CreateTableOperation Build()
     {
         if (!isSealed)
@@ -93,7 +101,8 @@ public sealed class TableBuilder : IDisposable
             table,
             columns.Select(column => column.Build()),
             indexes,
-            foreignKeys);
+            foreignKeys,
+            ifNotExists);
     }
 
     private ColumnBuilder AddColumn(string name, MigrationColumnType type)

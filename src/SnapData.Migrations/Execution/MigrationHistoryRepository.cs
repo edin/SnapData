@@ -4,7 +4,9 @@ internal sealed class MigrationHistoryRepository(string table, IMigrationDialect
 {
     private readonly string quotedTable = dialect.QuoteTable(table);
     private readonly string quotedMigrationId = dialect.QuoteIdentifier("migration_id");
+    private readonly string quotedAppliedOrder = dialect.QuoteIdentifier("applied_order");
     private readonly string quotedAppliedAt = dialect.QuoteIdentifier("applied_at");
+    private readonly string quotedFingerprint = dialect.QuoteIdentifier("fingerprint");
 
     public async Task EnsureCreatedAsync(
         IDbExecutor executor,
@@ -24,25 +26,41 @@ internal sealed class MigrationHistoryRepository(string table, IMigrationDialect
         CancellationToken cancellationToken)
     {
         var rows = await executor.QueryAsync<HistoryRow>(
-            $"SELECT {quotedMigrationId} AS MigrationId, {quotedAppliedAt} AS AppliedAt FROM {quotedTable} ORDER BY {quotedMigrationId}",
+            $"SELECT {quotedMigrationId} AS MigrationId, {quotedAppliedOrder} AS AppliedOrder, {quotedAppliedAt} AS AppliedAt, {quotedFingerprint} AS Fingerprint FROM {quotedTable} ORDER BY {quotedAppliedOrder}",
             cancellationToken: cancellationToken);
         return rows.Select(row => new MigrationHistoryEntry(
             row.MigrationId,
-            DateTimeOffset.Parse(row.AppliedAt, System.Globalization.CultureInfo.InvariantCulture)))
+            row.AppliedOrder,
+            DateTimeOffset.Parse(row.AppliedAt, System.Globalization.CultureInfo.InvariantCulture),
+            row.Fingerprint))
             .ToArray();
+    }
+
+    public async Task<long> GetNextAppliedOrderAsync(
+        IDbExecutor executor,
+        CancellationToken cancellationToken)
+    {
+        var current = await executor.ScalarAsync<long>(
+            $"SELECT COALESCE(MAX({quotedAppliedOrder}), 0) FROM {quotedTable}",
+            cancellationToken: cancellationToken);
+        return checked(current + 1);
     }
 
     public Task InsertAsync(
         IDbExecutor executor,
         string migrationId,
+        long appliedOrder,
         DateTimeOffset appliedAt,
+        string fingerprint,
         CancellationToken cancellationToken) =>
         executor.ExecuteAsync(
-            $"INSERT INTO {quotedTable} ({quotedMigrationId}, {quotedAppliedAt}) VALUES (@migrationId, @appliedAt)",
+            $"INSERT INTO {quotedTable} ({quotedMigrationId}, {quotedAppliedOrder}, {quotedAppliedAt}, {quotedFingerprint}) VALUES (@migrationId, @appliedOrder, @appliedAt, @fingerprint)",
             new
             {
                 migrationId,
-                appliedAt = appliedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+                appliedOrder,
+                appliedAt = appliedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                fingerprint
             },
             cancellationToken: cancellationToken);
 
@@ -71,8 +89,16 @@ internal sealed class MigrationHistoryRepository(string table, IMigrationDialect
     {
         public string MigrationId { get; set; } = string.Empty;
 
+        public long AppliedOrder { get; set; }
+
         public string AppliedAt { get; set; } = string.Empty;
+
+        public string? Fingerprint { get; set; }
     }
 }
 
-public sealed record MigrationHistoryEntry(string MigrationId, DateTimeOffset AppliedAt);
+public sealed record MigrationHistoryEntry(
+    string MigrationId,
+    long AppliedOrder,
+    DateTimeOffset AppliedAt,
+    string? Fingerprint);

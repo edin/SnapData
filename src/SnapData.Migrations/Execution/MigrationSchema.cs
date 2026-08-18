@@ -7,6 +7,8 @@ public sealed class MigrationSchema
     private readonly ISchemaInspector inspector;
     private readonly CancellationToken cancellationToken;
 
+    internal bool WasAccessed { get; private set; }
+
     internal MigrationSchema(
         ISchemaInspector inspector,
         CancellationToken cancellationToken)
@@ -15,11 +17,15 @@ public sealed class MigrationSchema
         this.cancellationToken = cancellationToken;
     }
 
-    public Task<bool> TableExistsAsync(string table) =>
-        inspector.TableExistsAsync(ParseName(table), cancellationToken);
+    public Task<bool> TableExistsAsync(string table)
+    {
+        WasAccessed = true;
+        return inspector.TableExistsAsync(ParseName(table), cancellationToken);
+    }
 
     public Task<bool> ColumnExistsAsync(string table, string column)
     {
+        WasAccessed = true;
         ArgumentException.ThrowIfNullOrWhiteSpace(column);
         return inspector.ColumnExistsAsync(
             ParseName(table),
@@ -29,11 +35,17 @@ public sealed class MigrationSchema
 
     public Task<TableSchema?> GetTableAsync(
         string table,
-        SchemaReadOptions? options = null) =>
-        inspector.GetTableAsync(ParseName(table), options, cancellationToken);
+        SchemaReadOptions? options = null)
+    {
+        WasAccessed = true;
+        return inspector.GetTableAsync(ParseName(table), options, cancellationToken);
+    }
 
-    public Task<DatabaseSchema> ReadAsync(SchemaReadOptions? options = null) =>
-        inspector.ReadAsync(options, cancellationToken);
+    public Task<DatabaseSchema> ReadAsync(SchemaReadOptions? options = null)
+    {
+        WasAccessed = true;
+        return inspector.ReadAsync(options, cancellationToken);
+    }
 
     internal static SchemaObjectName ParseName(string value)
     {

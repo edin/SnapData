@@ -4,6 +4,8 @@ namespace SnapData.Migrations;
 
 public interface IMigrationDialect
 {
+    string ProviderName { get; }
+
     IMigrationCompiler Compiler { get; }
 
     IMigrationLock? MigrationLock { get; }

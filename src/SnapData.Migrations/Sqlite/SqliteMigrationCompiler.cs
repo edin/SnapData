@@ -12,7 +12,9 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         return new MigrationScript(
             migrationId,
             direction,
-            plan.Operations.SelectMany(Compile).ToArray());
+            plan.Operations.SelectMany(operation =>
+                Compile(operation).Select(statement =>
+                    MigrationOperationConditions.Apply(operation, statement))).ToArray());
     }
 
     private static IEnumerable<MigrationStatement> Compile(MigrationOperation operation) =>
@@ -20,14 +22,41 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         {
             CreateTableOperation createTable => CompileCreateTable(createTable),
             DropTableOperation dropTable => Single($"DROP TABLE {Quote(dropTable.Table)}"),
+            RenameTableOperation renameTable => Single(
+                $"ALTER TABLE {Quote(renameTable.Table)} RENAME TO {Quote(RenameTarget(renameTable.NewName))}"),
+            AddColumnOperation addColumn => CompileAddColumn(addColumn),
             DropColumnOperation dropColumn => Single(
                 $"ALTER TABLE {Quote(dropColumn.Table)} DROP COLUMN {Quote(dropColumn.Column)}"),
             RenameColumnOperation renameColumn => Single(
                 $"ALTER TABLE {Quote(renameColumn.Table)} RENAME COLUMN {Quote(renameColumn.Column)} TO {Quote(renameColumn.NewName)}"),
+            CreateIndexOperation createIndex => Single(
+                CompileIndex(createIndex.Table, createIndex.Index, ifNotExists: false)),
+            DropIndexOperation dropIndex => Single($"DROP INDEX {Quote(dropIndex.Index)}"),
+            AlterColumnOperation => throw UnsupportedTableRebuild("alter a column"),
+            SetColumnDefaultOperation => throw UnsupportedTableRebuild("set a column default"),
+            DropColumnDefaultOperation => throw UnsupportedTableRebuild("drop a column default"),
+            AddForeignKeyOperation => throw UnsupportedTableRebuild("add a foreign key"),
+            DropForeignKeyOperation => throw UnsupportedTableRebuild("drop a foreign key"),
             ExecuteSqlOperation executeSql => Single(executeSql.Sql),
             _ => throw new NotSupportedException(
                 $"SQLite does not support migration operation '{operation.GetType().Name}'.")
         };
+
+    private static IEnumerable<MigrationStatement> CompileAddColumn(
+        AddColumnOperation operation)
+    {
+        if (operation.Column.IsPrimaryKey ||
+            operation.Column.IsUnique ||
+            operation.Column.IsIdentity)
+        {
+            throw new NotSupportedException(
+                "SQLite ADD COLUMN cannot add PRIMARY KEY, UNIQUE, or identity constraints. " +
+                "Use a table-rebuild migration or raw SQL.");
+        }
+
+        return Single(
+            $"ALTER TABLE {Quote(operation.Table)} ADD COLUMN {CompileColumn(operation.Column, false)}");
+    }
 
     private static IEnumerable<MigrationStatement> CompileCreateTable(CreateTableOperation operation)
     {
@@ -67,6 +96,7 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
 
         var createSql = new StringBuilder()
             .Append("CREATE TABLE ")
+            .Append(operation.IfNotExists ? "IF NOT EXISTS " : string.Empty)
             .Append(Quote(operation.Table))
             .AppendLine(" (")
             .Append("    ")
@@ -78,7 +108,8 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         yield return new MigrationStatement(createSql);
         foreach (var index in operation.Indexes)
         {
-            yield return new MigrationStatement(CompileIndex(operation.Table, index));
+            yield return new MigrationStatement(CompileIndex(
+                operation.Table, index, operation.IfNotExists));
         }
     }
 
@@ -97,7 +128,7 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         {
             sql.Append(" AUTOINCREMENT");
         }
-        if (!column.IsNullable && !column.IsPrimaryKey)
+        if (!column.IsNullable && !column.IsIdentity)
         {
             sql.Append(" NOT NULL");
         }
@@ -133,12 +164,15 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
         return sql.ToString();
     }
 
-    private static string CompileIndex(string table, IndexDefinition index)
+    private static string CompileIndex(
+        string table,
+        IndexDefinition index,
+        bool ifNotExists)
     {
         var name = index.Name ?? DefaultIndexName(table, index);
         var columns = string.Join(", ", index.Columns.Select(column =>
             $"{Quote(column.Name)} {(column.Order == MigrationSortOrder.Descending ? "DESC" : "ASC")}"));
-        return $"CREATE {(index.IsUnique ? "UNIQUE " : string.Empty)}INDEX {Quote(name)} ON {Quote(table)} ({columns})";
+        return $"CREATE {(index.IsUnique ? "UNIQUE " : string.Empty)}INDEX {(ifNotExists ? "IF NOT EXISTS " : string.Empty)}{Quote(name)} ON {Quote(table)} ({columns})";
     }
 
     private static string DefaultIndexName(string table, IndexDefinition index) =>
@@ -207,7 +241,22 @@ public sealed class SqliteMigrationCompiler : IMigrationCompiler
     private static NotSupportedException UnsupportedDefault(object value) => new(
         $"SQLite cannot format a default value of type '{value.GetType().Name}'. Use SqlDefault for SQL expressions.");
 
+    private static NotSupportedException UnsupportedTableRebuild(string operation) => new(
+        $"SQLite cannot {operation} directly. Use an explicit table-rebuild migration or raw SQL.");
+
     private static string QuoteLiteral(string value) => $"'{value.Replace("'", "''")}'";
+
+    private static string RenameTarget(string newName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+        if (newName.Contains('.', StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "A renamed table's new name must be unqualified. Moving a table between schemas is provider-specific.",
+                nameof(newName));
+        }
+        return newName;
+    }
 
     private static IEnumerable<MigrationStatement> Single(string sql)
     {

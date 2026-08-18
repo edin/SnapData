@@ -10,5 +10,16 @@ public sealed class MigrationRunnerOptions
 
     public TimeSpan LockTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    public TimeSpan LockLeaseDuration { get; init; } = TimeSpan.FromMinutes(5);
+
     public string? LockResource { get; init; }
+
+    public MigrationRollbackPolicy RollbackPolicy { get; init; } =
+        MigrationRollbackPolicy.Disabled;
+}
+
+public enum MigrationRollbackPolicy
+{
+    Disabled,
+    Enabled
 }

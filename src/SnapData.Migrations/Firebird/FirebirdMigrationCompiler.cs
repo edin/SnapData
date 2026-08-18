@@ -38,6 +38,16 @@ public sealed class FirebirdMigrationCompiler : RelationalMigrationCompiler
 
     protected override string BinaryLiteral(byte[] value) => $"X'{Convert.ToHexString(value)}'";
 
+    protected override IEnumerable<string> CompileAlterColumn(AlterColumnOperation operation)
+    {
+        EnsureAlterColumnHasNoConstraintChanges(operation.Column);
+        var table = QuoteTable(operation.Table);
+        var column = QuoteIdentifier(operation.Column.Name);
+        yield return $"ALTER TABLE {table} ALTER COLUMN {column} TYPE {StoreType(operation.Column)}";
+        yield return $"ALTER TABLE {table} ALTER COLUMN {column} " +
+            (operation.Column.IsNullable ? "DROP NOT NULL" : "SET NOT NULL");
+    }
+
     protected override string CompileColumn(ColumnDefinition column)
     {
         var sql = new StringBuilder()
@@ -77,6 +87,10 @@ public sealed class FirebirdMigrationCompiler : RelationalMigrationCompiler
     protected override string CompileRenameColumn(RenameColumnOperation operation) =>
         $"ALTER TABLE {QuoteTable(operation.Table)} ALTER COLUMN {QuoteIdentifier(operation.Column)} TO {QuoteIdentifier(operation.NewName)}";
 
+    protected override string CompileRenameTable(RenameTableOperation operation) =>
+        throw new NotSupportedException(
+            "Firebird does not support renaming tables.");
+
     protected override string CompileIndex(string table, IndexDefinition index)
     {
         var hasAscending = index.Columns.Any(column =>
@@ -94,5 +108,24 @@ public sealed class FirebirdMigrationCompiler : RelationalMigrationCompiler
         var direction = hasDescending ? "DESCENDING " : string.Empty;
         var columns = string.Join(", ", index.Columns.Select(column => QuoteIdentifier(column.Name)));
         return $"CREATE {(index.IsUnique ? "UNIQUE " : string.Empty)}{direction}INDEX {QuoteIdentifier(name)} ON {QuoteTable(table)} ({columns})";
+    }
+
+    protected override IEnumerable<string> CompileCreateTableIfNotExists(
+        CreateTableOperation operation,
+        string createTableSql,
+        IReadOnlyList<string> indexSql)
+    {
+        var relation = operation.Table.Replace("'", "''", StringComparison.Ordinal);
+        var statements = new[] { createTableSql }.Concat(indexSql)
+            .Select(statement =>
+                $"        EXECUTE STATEMENT '{statement.Replace("'", "''", StringComparison.Ordinal)}';");
+        yield return
+            $"EXECUTE BLOCK AS{Environment.NewLine}" +
+            $"BEGIN{Environment.NewLine}" +
+            $"    IF (NOT EXISTS(SELECT 1 FROM RDB$RELATIONS WHERE RDB$RELATION_NAME = '{relation}')) THEN{Environment.NewLine}" +
+            $"    BEGIN{Environment.NewLine}" +
+            string.Join(Environment.NewLine, statements) + Environment.NewLine +
+            $"    END{Environment.NewLine}" +
+            "END";
     }
 }

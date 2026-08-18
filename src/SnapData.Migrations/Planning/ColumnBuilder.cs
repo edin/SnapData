@@ -2,7 +2,7 @@ namespace SnapData.Migrations;
 
 public sealed class ColumnBuilder
 {
-    private readonly TableBuilder owner;
+    private readonly IColumnBuilderOwner owner;
     private readonly string name;
     private readonly MigrationColumnType type;
     private bool nullable;
@@ -14,7 +14,7 @@ public sealed class ColumnBuilder
     private int? precision;
     private int? scale;
 
-    internal ColumnBuilder(TableBuilder owner, string name, MigrationColumnType type)
+    internal ColumnBuilder(IColumnBuilderOwner owner, string name, MigrationColumnType type)
     {
         this.owner = owner;
         this.name = name;
@@ -25,6 +25,7 @@ public sealed class ColumnBuilder
     public ColumnBuilder PrimaryKey(bool value = true) => Mutate(() => primaryKey = value);
     public ColumnBuilder Unique(bool value = true) => Mutate(() => unique = value);
     public ColumnBuilder Identity(bool value = true) => Mutate(() => identity = value);
+    public ColumnBuilder Change() => Mutate(() => owner.MarkChanged(this));
     public ColumnBuilder Default(object? value) => Mutate(() => defaultValue = value);
     public ColumnBuilder DefaultSql(string sql) => Default(new SqlDefault(sql));
 
@@ -60,6 +61,13 @@ public sealed class ColumnBuilder
         mutation();
         return this;
     }
+}
+
+internal interface IColumnBuilderOwner
+{
+    void EnsureOpen();
+
+    void MarkChanged(ColumnBuilder column);
 }
 
 public sealed record SqlDefault

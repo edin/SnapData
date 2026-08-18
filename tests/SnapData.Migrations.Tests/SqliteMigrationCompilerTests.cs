@@ -111,6 +111,166 @@ public sealed class SqliteMigrationCompilerTests
         verify.CommandText =
             "SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('parents', 'children', 'IX_children_parent')";
         Assert.Equal(3L, await verify.ExecuteScalarAsync());
+
+        verify.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('parents') " +
+            "WHERE name IN ('tenant_id', 'id') AND \"notnull\" = 1";
+        Assert.Equal(2L, await verify.ExecuteScalarAsync());
+    }
+
+    [Fact]
+    public async Task Create_table_if_not_exists_is_idempotent_with_its_indexes()
+    {
+        var plan = new MigrationPlan();
+        using (var table = plan.CreateTableIfNotExists("users"))
+        {
+            table.Identity();
+            table.String("email", 250);
+            table.Index("IX_users_email", "email");
+        }
+
+        var script = new SqliteMigrationCompiler().Compile(
+            "001", MigrationDirection.Up, plan);
+
+        Assert.StartsWith(
+            "CREATE TABLE IF NOT EXISTS \"users\"",
+            script.Statements[0].Sql);
+        Assert.Equal(
+            "CREATE INDEX IF NOT EXISTS \"IX_users_email\" ON \"users\" (\"email\" ASC)",
+            script.Statements[1].Sql);
+
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        for (var run = 0; run < 2; run++)
+        {
+            foreach (var statement in script.Statements)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = statement.Sql;
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        await using var verify = connection.CreateCommand();
+        verify.CommandText =
+            "SELECT COUNT(*) FROM sqlite_schema WHERE name IN ('users', 'IX_users_email')";
+        Assert.Equal(2L, await verify.ExecuteScalarAsync());
+    }
+
+    [Fact]
+    public async Task Native_schema_changes_compile_and_execute_on_sqlite()
+    {
+        var plan = new MigrationPlan();
+        using (var table = plan.CreateTable("users"))
+        {
+            table.Identity();
+        }
+        using (var table = plan.AlterTable("users"))
+        {
+            table.String("email", 250).Nullable();
+            table.CreateUniqueIndex(null, IndexColumn.Desc("email"));
+            table.RenameColumn("email", "contact_email");
+        }
+        plan.RenameTable("users", "people");
+        plan.DropIndex("people", "UX_users_email");
+        plan.DropColumn("people", "contact_email");
+
+        var script = new SqliteMigrationCompiler().Compile(
+            "001", MigrationDirection.Up, plan);
+
+        Assert.Equal(
+            [
+                "ALTER TABLE \"users\" ADD COLUMN \"email\" TEXT",
+                "CREATE UNIQUE INDEX \"UX_users_email\" ON \"users\" (\"email\" DESC)",
+                "ALTER TABLE \"users\" RENAME COLUMN \"email\" TO \"contact_email\"",
+                "ALTER TABLE \"users\" RENAME TO \"people\"",
+                "DROP INDEX \"UX_users_email\"",
+                "ALTER TABLE \"people\" DROP COLUMN \"contact_email\""
+            ],
+            script.Statements.Skip(1).Select(statement => statement.Sql));
+
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        foreach (var statement in script.Statements)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = statement.Sql;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var verify = connection.CreateCommand();
+        verify.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('people') WHERE name = 'id'";
+        Assert.Equal(1L, await verify.ExecuteScalarAsync());
+    }
+
+    [Fact]
+    public void Table_rebuild_operations_are_rejected_explicitly()
+    {
+        var columnPlan = new MigrationPlan();
+        columnPlan.AlterColumn("users", new ColumnDefinition(
+            "name", MigrationColumnType.String, IsNullable: true));
+        var addForeignKeyPlan = new MigrationPlan();
+        addForeignKeyPlan.AddForeignKey("users", new ForeignKeyDefinition(
+            "FK_users_accounts", ["account_id"], "accounts", ["id"]));
+        var dropForeignKeyPlan = new MigrationPlan();
+        dropForeignKeyPlan.DropForeignKey("users", "FK_users_accounts");
+        var setDefaultPlan = new MigrationPlan();
+        setDefaultPlan.SetColumnDefault("users", "active", true);
+        var dropDefaultPlan = new MigrationPlan();
+        dropDefaultPlan.DropColumnDefault("users", "active");
+
+        foreach (var plan in new[]
+                 {
+                     columnPlan,
+                     addForeignKeyPlan,
+                     dropForeignKeyPlan,
+                     setDefaultPlan,
+                     dropDefaultPlan
+                 })
+        {
+            var exception = Assert.Throws<NotSupportedException>(() =>
+                new SqliteMigrationCompiler().Compile("001", MigrationDirection.Up, plan));
+            Assert.Contains("table-rebuild", exception.Message);
+        }
+    }
+
+    [Fact]
+    public void Add_column_rejects_constraints_that_sqlite_cannot_add()
+    {
+        var plan = new MigrationPlan();
+        plan.AddColumn("users", new ColumnDefinition(
+            "code", MigrationColumnType.String, IsUnique: true));
+
+        var exception = Assert.Throws<NotSupportedException>(() =>
+            new SqliteMigrationCompiler().Compile("001", MigrationDirection.Up, plan));
+
+        Assert.Contains("ADD COLUMN", exception.Message);
+    }
+
+    [Fact]
+    public void Conditional_column_sql_is_visible_and_changes_the_fingerprint()
+    {
+        var conditional = new MigrationPlan();
+        using (var table = conditional.AlterTable("users"))
+        {
+            table.IfNotExists().String("email");
+        }
+        var unconditional = new MigrationPlan();
+        using (var table = unconditional.AlterTable("users"))
+        {
+            table.String("email");
+        }
+
+        var conditionalScript = new SqliteMigrationCompiler().Compile(
+            "001", MigrationDirection.Up, conditional);
+        var unconditionalScript = new SqliteMigrationCompiler().Compile(
+            "001", MigrationDirection.Up, unconditional);
+
+        Assert.StartsWith(
+            "/* SnapData: IF COLUMN NOT EXISTS users.email */",
+            Assert.Single(conditionalScript.Statements).Sql);
+        Assert.NotEqual(conditionalScript.Fingerprint, unconditionalScript.Fingerprint);
     }
 
     [Fact]
