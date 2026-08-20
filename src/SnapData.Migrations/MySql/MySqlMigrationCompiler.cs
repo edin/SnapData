@@ -6,6 +6,36 @@ public sealed class MySqlMigrationCompiler : RelationalMigrationCompiler
 
     protected override string IdentityClause => "AUTO_INCREMENT";
 
+    protected override void ValidatePlan(MigrationPlan plan)
+    {
+        var operations = plan.Operations;
+        for (var index = 0; index < operations.Count; index++)
+        {
+            if (operations[index] is not AlterColumnOperation alterColumn)
+            {
+                continue;
+            }
+
+            var hasDefaultIntent = operations
+                .Skip(index + 1)
+                .Any(operation => operation switch
+                {
+                    SetColumnDefaultOperation setDefault =>
+                        SameColumn(alterColumn, setDefault.Table, setDefault.Column),
+                    DropColumnDefaultOperation dropDefault =>
+                        SameColumn(alterColumn, dropDefault.Table, dropDefault.Column),
+                    _ => false
+                });
+            if (!hasDefaultIntent)
+            {
+                throw new NotSupportedException(
+                    $"MySQL AlterColumn for '{alterColumn.Table}.{alterColumn.Column.Name}' requires " +
+                    "an explicit SetDefault, SetDefaultSql, or DropDefault operation later in the same migration plan. " +
+                    "MySQL MODIFY COLUMN removes defaults that are not restated.");
+            }
+        }
+    }
+
     protected override string QuoteIdentifier(string identifier)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identifier);
@@ -76,4 +106,11 @@ public sealed class MySqlMigrationCompiler : RelationalMigrationCompiler
                 "CREATE TABLE IF NOT EXISTS ",
                 StringComparison.Ordinal) + suffix + Environment.NewLine + ")";
     }
+
+    private static bool SameColumn(
+        AlterColumnOperation alterColumn,
+        string table,
+        string column) =>
+        string.Equals(alterColumn.Table, table, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(alterColumn.Column.Name, column, StringComparison.OrdinalIgnoreCase);
 }

@@ -98,13 +98,11 @@ public sealed class MigrationRunner
     public async Task<IReadOnlyList<MigrationStatusEntry>> GetStatusAsync(
         CancellationToken cancellationToken = default)
     {
-        await using var lockHandle = await AcquireLockAsync(cancellationToken);
         await using var session = await database.OpenSessionAsync(cancellationToken);
-        await history.EnsureCreatedAsync(session, cancellationToken);
-        var applied = await history.ReadAsync(session, cancellationToken);
-        var status = await BuildStatusAsync(session, applied, cancellationToken);
-        ThrowIfLockLost(lockHandle);
-        return status;
+        var applied = await history.ExistsAsync(session, cancellationToken)
+            ? await history.ReadAsync(session, cancellationToken)
+            : Array.Empty<MigrationHistoryEntry>();
+        return await BuildStatusAsync(session, applied, cancellationToken);
     }
 
     public async Task MigrateAsync(CancellationToken cancellationToken = default)

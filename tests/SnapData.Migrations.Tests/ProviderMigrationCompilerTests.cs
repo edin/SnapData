@@ -149,7 +149,10 @@ public sealed class ProviderMigrationCompilerTests
         {
             new MySqlMigrationCompiler(),
             "app.users",
-            ["ALTER TABLE `app`.`users` MODIFY COLUMN `name` VARCHAR(150)"]
+            [
+                "ALTER TABLE `app`.`users` MODIFY COLUMN `name` VARCHAR(150)",
+                "ALTER TABLE `app`.`users` ALTER COLUMN `name` DROP DEFAULT"
+            ]
         },
         {
             new FirebirdMigrationCompiler(),
@@ -172,6 +175,10 @@ public sealed class ProviderMigrationCompilerTests
         using (var table = plan.AlterTable(tableName))
         {
             table.String("name", 150).Nullable().Change();
+            if (compiler is MySqlMigrationCompiler)
+            {
+                table.DropDefault("name");
+            }
         }
 
         Assert.Equal(
@@ -257,6 +264,37 @@ public sealed class ProviderMigrationCompilerTests
             Assert.Throws<NotSupportedException>(() =>
                 compiler.Compile("001", MigrationDirection.Up, defaultPlan));
         }
+    }
+
+    [Fact]
+    public void MySql_alter_column_requires_explicit_final_default_intent()
+    {
+        var ambiguous = new MigrationPlan();
+        using (var table = ambiguous.AlterTable("users"))
+        {
+            table.String("name", 150).Change();
+        }
+
+        var exception = Assert.Throws<NotSupportedException>(() =>
+            new MySqlMigrationCompiler().Compile(
+                "001", MigrationDirection.Up, ambiguous));
+        Assert.Contains("requires an explicit", exception.Message);
+
+        var explicitDefault = new MigrationPlan();
+        using (var table = explicitDefault.AlterTable("users"))
+        {
+            table.String("name", 150).Change();
+            table.SetDefault("name", "Unknown");
+        }
+
+        Assert.Equal(
+            [
+                "ALTER TABLE `users` MODIFY COLUMN `name` VARCHAR(150) NOT NULL",
+                "ALTER TABLE `users` ALTER COLUMN `name` SET DEFAULT 'Unknown'"
+            ],
+            new MySqlMigrationCompiler().Compile(
+                    "001", MigrationDirection.Up, explicitDefault)
+                .Statements.Select(statement => statement.Sql));
     }
 
     public static TheoryData<IMigrationCompiler, string, string[]> StandaloneIndexCases => new()

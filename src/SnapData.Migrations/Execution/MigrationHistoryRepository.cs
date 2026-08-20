@@ -21,6 +21,12 @@ internal sealed class MigrationHistoryRepository(string table, IMigrationDialect
         }
     }
 
+    public Task<bool> ExistsAsync(
+        IDbExecutor executor,
+        CancellationToken cancellationToken) =>
+        dialect.CreateSchemaInspector(executor)
+            .TableExistsAsync(ParseName(table), cancellationToken);
+
     public async Task<IReadOnlyList<MigrationHistoryEntry>> ReadAsync(
         IDbExecutor executor,
         CancellationToken cancellationToken)

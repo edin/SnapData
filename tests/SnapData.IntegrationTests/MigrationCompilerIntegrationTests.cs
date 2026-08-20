@@ -97,6 +97,10 @@ public sealed class MigrationCompilerIntegrationTests
             using (var table = alterColumn.AlterTable(tableName))
             {
                 table.String("name", 120).Nullable().Change();
+                if (migrationCompiler is MySqlMigrationCompiler)
+                {
+                    table.DropDefault("name");
+                }
             }
             foreach (var statement in migrationCompiler.Compile(
                 "smoke-alter-column", MigrationDirection.Up, alterColumn).Statements)

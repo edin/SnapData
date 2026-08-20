@@ -212,6 +212,21 @@ public sealed class MigrationRunnerTests
     }
 
     [Fact]
+    public async Task Status_does_not_create_history_or_lock_tables()
+    {
+        await using var test = await TestDatabase.CreateAsync();
+        var runner = Runner(test.Database, new CreateUsers());
+
+        var status = await runner.GetStatusAsync();
+
+        Assert.Equal(MigrationStatusState.Pending, Assert.Single(status).State);
+        await using var session = await test.Database.OpenSessionAsync();
+        Assert.Equal(0L, await session.ScalarAsync<long>(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE name IN " +
+            "('__snapdata_migrations', '__snapdata_migrations_lock')"));
+    }
+
+    [Fact]
     public async Task Changed_generated_sql_is_detected_before_execution()
     {
         await using var test = await TestDatabase.CreateAsync();

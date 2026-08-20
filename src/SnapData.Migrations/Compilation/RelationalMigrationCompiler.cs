@@ -11,6 +11,7 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
     public MigrationScript Compile(string migrationId, MigrationDirection direction, MigrationPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        ValidatePlan(plan);
         return new MigrationScript(
             migrationId,
             direction,
@@ -18,6 +19,10 @@ public abstract class RelationalMigrationCompiler : IMigrationCompiler
     }
 
     protected abstract string QuoteIdentifier(string identifier);
+
+    protected virtual void ValidatePlan(MigrationPlan plan)
+    {
+    }
 
     protected abstract string StoreType(ColumnDefinition column);
 
