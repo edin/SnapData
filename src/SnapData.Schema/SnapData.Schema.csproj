@@ -6,7 +6,7 @@
     <Title>SnapData.Schema</Title>
     <Authors>Edin</Authors>
     <Copyright>Copyright © 2026 Edin</Copyright>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0-alpha.4</Version>
     <Description>Optional database schema inspection for SnapData.</Description>
     <PackageTags>database;schema;metadata;inspection;snapdata</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

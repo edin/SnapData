@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
+using SnapData.Migrations;
 
 namespace SnapData.Migrations.Cli.Configuration;
 
@@ -87,6 +88,7 @@ internal sealed partial class IniConfigurationLoader
             NullIfWhiteSpace(Value("MigrationsNamespace")),
             NullIfWhiteSpace(Value("HistoryTable", "MigrationsTable"))
                 ?? "__snapdata_migrations",
+            ParseLocking(Value("Locking")),
             ParseTimeout(Value("Timeout")));
     }
 
@@ -156,6 +158,25 @@ internal sealed partial class IniConfigurationLoader
                 $"Migration Timeout must be a positive number of seconds, but was '{value}'.");
         }
         return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static MigrationLocking ParseLocking(string? value)
+    {
+        if (value is null)
+        {
+            return MigrationLocking.Required;
+        }
+        if (string.Equals(value, "Optional", StringComparison.OrdinalIgnoreCase))
+        {
+            return MigrationLocking.Auto;
+        }
+        if (!Enum.TryParse<MigrationLocking>(value, ignoreCase: true, out var locking)
+            || !Enum.IsDefined(locking))
+        {
+            throw new InvalidOperationException(
+                $"Migration Locking must be Required, Optional, or Disabled, but was '{value}'.");
+        }
+        return locking;
     }
 
     private static string? ResolveOptionalPath(string? value, string configDirectory)

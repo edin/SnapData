@@ -83,43 +83,6 @@ foreach (var book in projectedBooks)
     Console.WriteLine($"{book.Title} — {book.AuthorName}");
 }
 
-[Table("authors")]
-public sealed class Author
-{
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public long Id { get; set; }
-
-    public required string Name { get; set; }
-
-    [Relation(nameof(Id), nameof(Book.AuthorId))]
-    public List<Book> Books { get; set; } = [];
-}
-
-[Table("books")]
-public sealed class Book
-{
-    [Key]
-    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-    public long Id { get; set; }
-
-    [Column("author_id")]
-    public long AuthorId { get; set; }
-
-    public required string Title { get; set; }
-
-    public bool Published { get; set; }
-}
-
-public sealed class BookWithAuthor
-{
-    public long Id { get; set; }
-
-    public required string Title { get; set; }
-
-    public required string AuthorName { get; set; }
-}
-
 public sealed class ConsoleCommandObserver : CommandObserver
 {
     public override void Executed(CommandExecutedContext context) =>

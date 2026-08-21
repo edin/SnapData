@@ -1,3 +1,5 @@
+using SnapData.Migrations;
+
 namespace SnapData.Migrations.Cli.Configuration;
 
 internal sealed record MigrationCliConfiguration(
@@ -13,4 +15,5 @@ internal sealed record MigrationCliConfiguration(
     string? MigrationsPath,
     string? MigrationsNamespace,
     string HistoryTable,
+    MigrationLocking Locking,
     TimeSpan Timeout);

@@ -1,3 +1,4 @@
+using SnapData.Migrations;
 using SnapData.Migrations.Cli.Configuration;
 
 namespace SnapData.Migrations.Cli.Tests;
@@ -26,6 +27,7 @@ public sealed class IniConfigurationLoaderTests : IDisposable
             MigrationsPath=database/migrations
             MigrationsNamespace=App.Migrations
             HistoryTable=app_migrations
+            Locking=Optional
             Timeout=45.5
             """);
         var child = Directory.CreateDirectory(
@@ -48,6 +50,7 @@ public sealed class IniConfigurationLoaderTests : IDisposable
             result.MigrationsPath);
         Assert.Equal("App.Migrations", result.MigrationsNamespace);
         Assert.Equal("app_migrations", result.HistoryTable);
+        Assert.Equal(MigrationLocking.Auto, result.Locking);
         Assert.Equal(TimeSpan.FromSeconds(45.5), result.Timeout);
     }
 
@@ -83,6 +86,7 @@ public sealed class IniConfigurationLoaderTests : IDisposable
         Assert.Equal("Debug", result.BuildConfiguration);
         Assert.Null(result.TargetFramework);
         Assert.Null(result.BundleType);
+        Assert.Equal(MigrationLocking.Required, result.Locking);
     }
 
     [Fact]
@@ -125,6 +129,19 @@ public sealed class IniConfigurationLoaderTests : IDisposable
         Assert.Equal(
             Path.Combine(configDirectory, "custom.ini"),
             result.ConfigFile);
+    }
+
+    [Fact]
+    public void Invalid_locking_mode_fails_clearly()
+    {
+        File.WriteAllText(
+            Path.Combine(directory, "snap.ini"),
+            "[Migration]\nProvider=Sqlite\nConnection=Data Source=:memory:\nLocking=Sometimes");
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            new IniConfigurationLoader().Load(directory));
+
+        Assert.Contains("Required, Optional, or Disabled", exception.Message);
     }
 
     public void Dispose()

@@ -6,7 +6,7 @@
     <Title>SnapData</Title>
     <Authors>Edin</Authors>
     <Copyright>Copyright © 2026 Edin</Copyright>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0-alpha.4</Version>
     <Description>Lightweight, explicit data access and query building for .NET.</Description>
     <PackageTags>orm;database;sql;data-access;micro-orm;ado-net</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

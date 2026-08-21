@@ -59,14 +59,36 @@ jobs:
           --no-restore
           -p:Version=$env:PACKAGE_VERSION
 
-      - name: Pack
+      - name: Pack release set
+        shell: pwsh
+        run: |
+          $projects = @(
+            "src/SnapData/SnapData.csproj",
+            "src/SnapData.Schema/SnapData.Schema.csproj",
+            "src/SnapData.Migrations/SnapData.Migrations.csproj",
+            "src/SnapData.Migrations.Cli/SnapData.Migrations.Cli.csproj"
+          )
+
+          foreach ($project in $projects) {
+            dotnet pack $project `
+              --configuration Release `
+              --no-build `
+              --no-restore `
+              --output artifacts/packages `
+              -p:Version=$env:PACKAGE_VERSION
+
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+          }
+
+      - name: Verify packages and tool installation
+        shell: pwsh
         run: >
-          dotnet pack src/SnapData/SnapData.csproj
-          --configuration Release
-          --no-build
-          --no-restore
-          --output artifacts
-          -p:Version=$env:PACKAGE_VERSION
+          ./eng/verify-packages.ps1
+          -Version $env:PACKAGE_VERSION
+          -PackageDirectory artifacts/packages
+          -ToolDirectory artifacts/tool-smoke
 
       - name: Log in to NuGet.org
         id: login
@@ -77,7 +99,7 @@ jobs:
       - name: Publish package
         shell: pwsh
         run: |
-          $packages = Get-ChildItem -Path artifacts -Filter *.nupkg
+          $packages = Get-ChildItem -Path artifacts/packages -Filter *.nupkg
           if ($packages.Count -eq 0) {
             throw "No NuGet packages were found in the artifacts directory."
           }

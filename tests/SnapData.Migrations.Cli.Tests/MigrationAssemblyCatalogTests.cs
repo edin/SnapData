@@ -122,11 +122,19 @@ namespace SnapData.Migrations.Cli.Tests.Fixtures.Bundle
     public sealed class FirstMigration : global::SnapData.Migrations.Migration
     {
         public override string Id => "001-bundle-first";
+
+        public override void Up(global::SnapData.Migrations.MigrationPlan migration) =>
+            migration.ExecuteSql(
+                "CREATE TABLE first_items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)");
     }
 
     public sealed class SecondMigration : global::SnapData.Migrations.Migration
     {
         public override string Id => "002-bundle-second";
+
+        public override void Up(global::SnapData.Migrations.MigrationPlan migration) =>
+            migration.ExecuteSql(
+                "CREATE TABLE second_items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)");
     }
 }
 

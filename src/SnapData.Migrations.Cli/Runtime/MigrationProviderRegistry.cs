@@ -52,7 +52,9 @@ internal static class MigrationProviderRegistry
         };
     }
 
-    public static MigrationRunner CreateRunner(MigrationSource source)
+    public static MigrationRunner CreateRunner(
+        MigrationSource source,
+        bool enableRollback = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         var configuration = source.Configuration;
@@ -79,7 +81,11 @@ internal static class MigrationProviderRegistry
             new MigrationRunnerOptions
             {
                 HistoryTable = configuration.HistoryTable,
-                LockTimeout = configuration.Timeout
+                Locking = configuration.Locking,
+                LockTimeout = configuration.Timeout,
+                RollbackPolicy = enableRollback
+                    ? MigrationRollbackPolicy.Enabled
+                    : MigrationRollbackPolicy.Disabled
             });
     }
 }

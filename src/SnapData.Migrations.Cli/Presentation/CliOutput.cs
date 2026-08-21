@@ -1,6 +1,7 @@
 using SnapData.Migrations.Cli.Configuration;
 using SnapData.Migrations.Cli.Discovery;
 using SnapData.Migrations.Cli.Runtime;
+using SnapData.Migrations.Cli.Scaffolding;
 using SnapData.Migrations;
 using Spectre.Console;
 
@@ -13,6 +14,17 @@ internal sealed class CliOutput(IAnsiConsole console)
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         ArgumentNullException.ThrowIfNull(action);
         return await console.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse(CliTheme.Accent))
+            .StartAsync(message, _ => action())
+            .ConfigureAwait(false);
+    }
+
+    public async Task StatusAsync(string message, Func<Task> action)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        ArgumentNullException.ThrowIfNull(action);
+        await console.Status()
             .Spinner(Spinner.Known.Dots)
             .SpinnerStyle(Style.Parse(CliTheme.Accent))
             .StartAsync(message, _ => action())
@@ -51,6 +63,30 @@ internal sealed class CliOutput(IAnsiConsole console)
 
     public void WriteError(string message) =>
         WriteBadge("Error", CliTheme.Error, message);
+
+    public void WriteInitialization(MigrationScaffoldResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        console.WriteLine();
+        console.Write(new Rule($"[bold {CliTheme.Accent}]SnapData initialized[/]")
+            .RuleStyle(CliTheme.Border)
+            .LeftJustified());
+        console.WriteLine();
+        var grid = new Grid()
+            .AddColumn(new GridColumn().NoWrap())
+            .AddColumn();
+        grid.AddRow("[grey50]Config[/]", Markup.Escape(
+            Path.GetRelativePath(result.Directory, result.ConfigFile)));
+        grid.AddRow("[grey50]Project[/]", Markup.Escape(
+            Path.GetRelativePath(result.Directory, result.ProjectFile)));
+        grid.AddRow("[grey50]Migrations[/]", Markup.Escape(
+            Path.GetDirectoryName(Path.GetRelativePath(
+                result.Directory, result.MigrationFiles[0])) ?? "Migrations"));
+        console.Write(grid);
+        console.WriteLine();
+        WriteSuccess("Ready. Run 'snapdata list' to discover the sample migrations.");
+        console.WriteLine();
+    }
 
     public void WriteMigrationStatus(
         MigrationSource source,
@@ -110,6 +146,80 @@ internal sealed class CliOutput(IAnsiConsole console)
         }
         console.WriteLine();
     }
+
+    public void WriteScripts(
+        MigrationSource source,
+        IReadOnlyList<MigrationScript> scripts)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scripts);
+        console.WriteLine();
+        console.Write(new Rule($"[bold {CliTheme.Accent}]Pending migration SQL[/]")
+            .RuleStyle(CliTheme.Border)
+            .LeftJustified());
+        console.WriteLine();
+        WriteConfiguration(
+            source.Configuration,
+            source.AssemblyPath,
+            source.Catalog.BundleType);
+        console.WriteLine();
+        new MigrationScriptRenderer(console).Render(scripts);
+        var statements = scripts.Sum(script => script.Statements.Count);
+        WriteSuccess(
+            $"Generated {statements} SQL statement{Plural(statements)} for " +
+            $"{scripts.Count} pending migration{Plural(scripts.Count)}.");
+        console.WriteLine();
+    }
+
+    public void WriteMigrationPlan(
+        MigrationSource source,
+        IReadOnlyList<Migration> pendingMigrations)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(pendingMigrations);
+        console.WriteLine();
+        console.Write(new Rule($"[bold {CliTheme.Accent}]Migration plan[/]")
+            .RuleStyle(CliTheme.Border)
+            .LeftJustified());
+        console.WriteLine();
+        WriteConfiguration(
+            source.Configuration,
+            source.AssemblyPath,
+            source.Catalog.BundleType);
+        console.WriteLine();
+        new MigrationTableRenderer(console).Render(
+            new MigrationCatalog(pendingMigrations, source.Catalog.BundleType));
+        console.WriteLine();
+        WriteWarning(
+            $"{pendingMigrations.Count} migration{Plural(pendingMigrations.Count)} will be applied.");
+        console.WriteLine();
+    }
+
+    public void WriteRollbackPlan(
+        MigrationSource source,
+        IReadOnlyList<Migration> migrations)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(migrations);
+        console.WriteLine();
+        console.Write(new Rule($"[bold {CliTheme.Warning}]Rollback plan[/]")
+            .RuleStyle(CliTheme.Border)
+            .LeftJustified());
+        console.WriteLine();
+        WriteConfiguration(
+            source.Configuration,
+            source.AssemblyPath,
+            source.Catalog.BundleType);
+        console.WriteLine();
+        new MigrationTableRenderer(console).Render(
+            new MigrationCatalog(migrations, source.Catalog.BundleType));
+        console.WriteLine();
+        WriteWarning(
+            $"{migrations.Count} migration{Plural(migrations.Count)} will be reverted.");
+        console.WriteLine();
+    }
+
+    public void WriteCancelled() => WriteWarning("Operation cancelled; no changes were made.");
 
     public void WriteWarning(string message) =>
         WriteBadge("Warning", CliTheme.Warning, message, darkText: true);

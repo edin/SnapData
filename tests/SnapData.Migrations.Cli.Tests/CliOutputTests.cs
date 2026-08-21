@@ -27,6 +27,7 @@ public sealed class CliOutputTests
             null,
             "App.Migrations",
             "__snapdata_migrations",
+            MigrationLocking.Required,
             TimeSpan.FromSeconds(30));
 
         new CliOutput(console).WriteMigrationList(
@@ -75,6 +76,7 @@ public sealed class CliOutputTests
             null,
             "App.Migrations",
             "__snapdata_migrations",
+            MigrationLocking.Required,
             TimeSpan.FromSeconds(30));
         var catalog = new MigrationCatalog(
             [
@@ -102,6 +104,46 @@ public sealed class CliOutputTests
         Assert.Contains("Pending", output);
         Assert.Contains("1 migration history issue", output);
         Assert.DoesNotContain("do-not-print", output);
+    }
+
+    [Fact]
+    public void Script_output_highlights_sql_and_reports_statement_count()
+    {
+        var writer = new StringWriter();
+        var configuration = new MigrationCliConfiguration(
+            "C:/app/snap.ini",
+            null,
+            "Sqlite",
+            "Data Source=secret.db",
+            "C:/app/App.Migrations.dll",
+            null,
+            "Debug",
+            null,
+            null,
+            null,
+            "App.Migrations",
+            "__snapdata_migrations",
+            MigrationLocking.Required,
+            TimeSpan.FromSeconds(30));
+        var source = new MigrationSource(
+            configuration,
+            configuration.AssemblyPath!,
+            new MigrationCatalog(
+                [new MigrationDescriptor("001-users", "App.Migrations.Users")],
+                null));
+
+        new CliOutput(CreateConsole(writer)).WriteScripts(
+            source,
+            [new MigrationScript(
+                "001-users",
+                MigrationDirection.Up,
+                [new MigrationStatement("CREATE TABLE users (id INTEGER PRIMARY KEY)")])]);
+
+        var output = writer.ToString();
+        Assert.Contains("Pending migration SQL", output);
+        Assert.Contains("CREATE TABLE users", output);
+        Assert.Contains("Generated 1 SQL statement for 1 pending migration", output);
+        Assert.DoesNotContain("secret.db", output);
     }
 
     private static IAnsiConsole CreateConsole(StringWriter writer) =>

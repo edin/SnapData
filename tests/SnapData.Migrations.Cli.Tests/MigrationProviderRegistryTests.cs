@@ -48,6 +48,7 @@ public sealed class MigrationProviderRegistryTests : IDisposable
             null,
             null,
             "__snapdata_migrations",
+            MigrationLocking.Required,
             TimeSpan.FromSeconds(30));
         var catalog = new MigrationCatalog(
             new Migration[] { new PendingMigration() },
@@ -57,9 +58,16 @@ public sealed class MigrationProviderRegistryTests : IDisposable
             configuration.AssemblyPath!,
             catalog);
 
-        var status = await MigrationProviderRegistry.CreateRunner(source).GetStatusAsync();
+        var runner = MigrationProviderRegistry.CreateRunner(source);
+        var preflight = await MigrationPreflight.EvaluateAsync(runner, source);
 
-        Assert.Equal(MigrationStatusState.Pending, Assert.Single(status).State);
+        Assert.True(preflight.IsValid);
+        Assert.Equal(
+            MigrationStatusState.Pending,
+            Assert.Single(preflight.Status).State);
+        Assert.Same(
+            catalog.Migrations[0],
+            Assert.Single(preflight.PendingMigrations));
         await using var connection = new SqliteConnection(configuration.Connection);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();

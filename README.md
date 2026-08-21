@@ -30,7 +30,7 @@ var rows = await session
 
 ## Status
 
-SnapData is currently `0.1.0-alpha.1`. The API is usable but may still change
+SnapData is currently `0.1.0-alpha.4`. The API is usable but may still change
 before a stable release.
 
 The package contains native `net8.0` and `net10.0` assemblies. .NET 9
@@ -77,6 +77,34 @@ For a runnable end-to-end example using SQLite, see
 ```powershell
 dotnet run --project samples/SnapData.Sample
 ```
+
+### Schema inspection and migrations
+
+SnapData keeps schema tooling optional. Install only the companion packages an
+application needs:
+
+```powershell
+dotnet add package SnapData.Schema
+dotnet add package SnapData.Migrations
+dotnet tool install --global SnapData.Migrations.Cli
+```
+
+`SnapData.Schema` reads database metadata, while `SnapData.Migrations` provides
+provider-specific migration planning, history, locking, execution, and rollback.
+The `snapdata` tool can initialize a migration project and then list, inspect,
+script, apply, or roll back its migrations:
+
+```powershell
+snapdata init
+snapdata list
+snapdata status
+snapdata script
+snapdata migrate --yes
+```
+
+See the [migration library guide](src/SnapData.Migrations/README.md), the
+[CLI guide](src/SnapData.Migrations.Cli/README.md), and the runnable
+[SQLite migration example](examples/SqliteMigrations/README.md).
 
 ## Creating a database
 
@@ -759,7 +787,7 @@ SnapData intentionally does not provide:
 - Change tracking or a unit of work
 - A required `DbContext`
 - Repository abstractions
-- Migrations or schema management
+- Schema management requirements in the core `SnapData` package
 - Identity resolution across separate relation queries
 - Client-side expression evaluation
 

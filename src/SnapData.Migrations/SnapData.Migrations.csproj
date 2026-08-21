@@ -6,7 +6,7 @@
     <Title>SnapData.Migrations</Title>
     <Authors>Edin</Authors>
     <Copyright>Copyright © 2026 Edin</Copyright>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0-alpha.4</Version>
     <Description>Database migrations for SnapData.</Description>
     <PackageTags>database;migrations;schema;snapdata</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
