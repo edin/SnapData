@@ -33,6 +33,8 @@ var rows = await session
 SnapData is currently `0.1.0-alpha.4`. The API is usable but may still change
 before a stable release.
 
+See the [release roadmap](ROADMAP.md) for the planned milestones toward 1.0.
+
 The package contains native `net8.0` and `net10.0` assemblies. .NET 9
 applications use the compatible `net8.0` assembly through NuGet's normal
 framework selection.
