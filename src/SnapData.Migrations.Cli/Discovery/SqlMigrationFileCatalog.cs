@@ -68,7 +68,10 @@ internal sealed partial class SqlMigrationFileCatalog
             migrations.Add(new SqlMigration(id, sections.UpSql, downSql));
         }
 
-        return new MigrationCatalog(migrations, bundleType: null);
+        return new MigrationCatalog(
+            migrations,
+            bundleType: null,
+            migration => $"{migration.Id}.sql");
     }
 
     private static void ValidateDownFilesHaveUpFiles(

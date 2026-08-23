@@ -16,4 +16,7 @@ internal sealed record MigrationCliConfiguration(
     string? MigrationsNamespace,
     string HistoryTable,
     MigrationLocking Locking,
-    TimeSpan Timeout);
+    TimeSpan Timeout)
+{
+    public string? ScriptsPath { get; init; }
+}

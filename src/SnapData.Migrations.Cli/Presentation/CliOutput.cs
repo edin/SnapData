@@ -31,21 +31,17 @@ internal sealed class CliOutput(IAnsiConsole console)
             .ConfigureAwait(false);
     }
 
-    public void WriteMigrationList(
-        MigrationCliConfiguration configuration,
-        string assemblyPath,
-        MigrationCatalog migrations)
+    public void WriteMigrationList(MigrationSource source)
     {
-        ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentException.ThrowIfNullOrWhiteSpace(assemblyPath);
-        ArgumentNullException.ThrowIfNull(migrations);
+        ArgumentNullException.ThrowIfNull(source);
+        var migrations = source.Catalog;
 
         console.WriteLine();
         console.Write(new Rule($"[bold {CliTheme.Accent}]SnapData migrations[/]")
             .RuleStyle(CliTheme.Border)
             .LeftJustified());
         console.WriteLine();
-        WriteConfiguration(configuration, assemblyPath, migrations.BundleType);
+        WriteConfiguration(source);
         console.WriteLine();
 
         if (migrations.Count == 0)
@@ -54,7 +50,9 @@ internal sealed class CliOutput(IAnsiConsole console)
             return;
         }
 
-        new MigrationTableRenderer(console).Render(migrations);
+        new MigrationTableRenderer(console).Render(
+            migrations,
+            source.Kind == MigrationSourceKind.SqlScripts ? "File" : "Class");
         console.WriteLine();
         var noun = migrations.Count == 1 ? "migration" : "migrations";
         WriteSuccess($"{migrations.Count} {noun} discovered.");
@@ -99,10 +97,7 @@ internal sealed class CliOutput(IAnsiConsole console)
             .RuleStyle(CliTheme.Border)
             .LeftJustified());
         console.WriteLine();
-        WriteConfiguration(
-            source.Configuration,
-            source.AssemblyPath,
-            source.Catalog.BundleType);
+        WriteConfiguration(source);
         console.WriteLine();
 
         if (status.Count == 0)
@@ -158,10 +153,7 @@ internal sealed class CliOutput(IAnsiConsole console)
             .RuleStyle(CliTheme.Border)
             .LeftJustified());
         console.WriteLine();
-        WriteConfiguration(
-            source.Configuration,
-            source.AssemblyPath,
-            source.Catalog.BundleType);
+        WriteConfiguration(source);
         console.WriteLine();
         new MigrationScriptRenderer(console).Render(scripts);
         var statements = scripts.Sum(script => script.Statements.Count);
@@ -182,10 +174,7 @@ internal sealed class CliOutput(IAnsiConsole console)
             .RuleStyle(CliTheme.Border)
             .LeftJustified());
         console.WriteLine();
-        WriteConfiguration(
-            source.Configuration,
-            source.AssemblyPath,
-            source.Catalog.BundleType);
+        WriteConfiguration(source);
         console.WriteLine();
         new MigrationTableRenderer(console).Render(
             new MigrationCatalog(pendingMigrations, source.Catalog.BundleType));
@@ -206,10 +195,7 @@ internal sealed class CliOutput(IAnsiConsole console)
             .RuleStyle(CliTheme.Border)
             .LeftJustified());
         console.WriteLine();
-        WriteConfiguration(
-            source.Configuration,
-            source.AssemblyPath,
-            source.Catalog.BundleType);
+        WriteConfiguration(source);
         console.WriteLine();
         new MigrationTableRenderer(console).Render(
             new MigrationCatalog(migrations, source.Catalog.BundleType));
@@ -227,15 +213,20 @@ internal sealed class CliOutput(IAnsiConsole console)
     public void WriteSuccess(string message) =>
         WriteBadge("OK", CliTheme.Success, message);
 
-    private void WriteConfiguration(
-        MigrationCliConfiguration configuration,
-        string assemblyPath,
-        string? discoveredBundleType)
+    private void WriteConfiguration(MigrationSource source)
     {
+        var configuration = source.Configuration;
         var grid = new Grid()
             .AddColumn(new GridColumn().NoWrap())
             .AddColumn();
-        if (configuration.ProjectPath is not null)
+        if (source.Kind == MigrationSourceKind.SqlScripts)
+        {
+            var configDirectory = Path.GetDirectoryName(configuration.ConfigFile)!;
+            grid.AddRow(
+                "[grey50]Scripts[/]",
+                Markup.Escape(Path.GetRelativePath(configDirectory, source.SourcePath)));
+        }
+        else if (configuration.ProjectPath is not null)
         {
             var projectDirectory = Path.GetDirectoryName(configuration.ProjectPath)!;
             grid.AddRow(
@@ -243,13 +234,13 @@ internal sealed class CliOutput(IAnsiConsole console)
                 Markup.Escape(Path.GetFileName(configuration.ProjectPath)));
             grid.AddRow(
                 "[grey50]Output[/]",
-                Markup.Escape(Path.GetRelativePath(projectDirectory, assemblyPath)));
+                Markup.Escape(Path.GetRelativePath(projectDirectory, source.SourcePath)));
         }
         else
         {
             grid.AddRow(
                 "[grey50]Assembly[/]",
-                Markup.Escape(Path.GetFileName(assemblyPath)));
+                Markup.Escape(Path.GetFileName(source.SourcePath)));
         }
         if (configuration.TargetFramework is not null)
         {
@@ -271,10 +262,19 @@ internal sealed class CliOutput(IAnsiConsole console)
                 "[grey50]Namespace[/]",
                 Markup.Escape(configuration.MigrationsNamespace));
         }
-        grid.AddRow(
-            "[grey50]Bundle[/]",
-            Markup.Escape(ShortTypeName(
-                discoveredBundleType ?? configuration.BundleType ?? "Convention scan")));
+        if (source.Kind == MigrationSourceKind.SqlScripts)
+        {
+            grid.AddRow("[grey50]Format[/]", "SQL files");
+        }
+        else
+        {
+            grid.AddRow(
+                "[grey50]Bundle[/]",
+                Markup.Escape(ShortTypeName(
+                    source.Catalog.BundleType
+                    ?? configuration.BundleType
+                    ?? "Convention scan")));
+        }
         console.Write(grid);
     }
 

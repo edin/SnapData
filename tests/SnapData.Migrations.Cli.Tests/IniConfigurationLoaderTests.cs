@@ -132,6 +132,20 @@ public sealed class IniConfigurationLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Resolves_a_relative_sql_scripts_directory()
+    {
+        File.WriteAllText(
+            Path.Combine(directory, "snap.ini"),
+            "[Migration]\nProvider=Sqlite\nConnection=Data Source=app.db\nScripts=Scripts");
+
+        var result = new IniConfigurationLoader().Load(directory);
+
+        Assert.Equal(Path.Combine(directory, "Scripts"), result.ScriptsPath);
+        Assert.Null(result.ProjectPath);
+        Assert.Null(result.AssemblyPath);
+    }
+
+    [Fact]
     public void Invalid_locking_mode_fails_clearly()
     {
         File.WriteAllText(

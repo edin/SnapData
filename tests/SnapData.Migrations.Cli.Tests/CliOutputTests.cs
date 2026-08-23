@@ -31,11 +31,12 @@ public sealed class CliOutputTests
             TimeSpan.FromSeconds(30));
 
         new CliOutput(console).WriteMigrationList(
-            configuration,
-            configuration.AssemblyPath!,
-            new MigrationCatalog(
+            new MigrationSource(
+                configuration,
+                configuration.AssemblyPath!,
+                new MigrationCatalog(
                 [new MigrationDescriptor("001-create-users", "App.Migrations.CreateUsers")],
-                "App.Migrations.AppBundle"));
+                "App.Migrations.AppBundle")));
 
         var output = writer.ToString();
         Assert.Contains("SnapData migrations", output);
@@ -46,6 +47,47 @@ public sealed class CliOutputTests
         Assert.Contains("AppBundle", output);
         Assert.Contains("1 migration discovered", output);
         Assert.DoesNotContain("do-not-print", output);
+        Assert.DoesNotContain("secret.db", output);
+    }
+
+    [Fact]
+    public void Sql_migration_list_shows_scripts_without_assembly_or_bundle_fields()
+    {
+        var writer = new StringWriter();
+        var configuration = new MigrationCliConfiguration(
+            "C:/app/snap.ini",
+            null,
+            "Sqlite",
+            "Data Source=secret.db",
+            null,
+            null,
+            "Debug",
+            null,
+            null,
+            null,
+            null,
+            "__snapdata_migrations",
+            MigrationLocking.Required,
+            TimeSpan.FromSeconds(30))
+        {
+            ScriptsPath = "C:/app/Scripts"
+        };
+        var source = new MigrationSource(
+            configuration,
+            configuration.ScriptsPath,
+            new MigrationCatalog(
+                [new MigrationDescriptor("001_create_users", "SqlMigration")],
+                null),
+            MigrationSourceKind.SqlScripts);
+
+        new CliOutput(CreateConsole(writer)).WriteMigrationList(source);
+
+        var output = writer.ToString();
+        Assert.Contains("Scripts", output);
+        Assert.Contains("SQL files", output);
+        Assert.Contains("001_create_users", output);
+        Assert.DoesNotContain("Assembly", output);
+        Assert.DoesNotContain("Bundle", output);
         Assert.DoesNotContain("secret.db", output);
     }
 

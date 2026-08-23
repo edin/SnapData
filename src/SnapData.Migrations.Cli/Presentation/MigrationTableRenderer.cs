@@ -5,16 +5,19 @@ namespace SnapData.Migrations.Cli.Presentation;
 
 internal sealed class MigrationTableRenderer(IAnsiConsole console)
 {
-    public void Render(IReadOnlyList<MigrationDescriptor> migrations)
+    public void Render(
+        IReadOnlyList<MigrationDescriptor> migrations,
+        string detailHeader = "Class")
     {
         ArgumentNullException.ThrowIfNull(migrations);
+        ArgumentException.ThrowIfNullOrWhiteSpace(detailHeader);
         var table = new Table()
             .Border(TableBorder.Rounded)
             .BorderColor(Color.Grey27)
             .Expand()
             .AddColumn(new TableColumn("[grey70]#[/]").RightAligned())
             .AddColumn("[grey70]Migration[/]")
-            .AddColumn("[grey70]Class[/]");
+            .AddColumn($"[grey70]{Markup.Escape(detailHeader)}[/]");
 
         for (var index = 0; index < migrations.Count; index++)
         {

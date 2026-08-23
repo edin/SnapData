@@ -102,6 +102,10 @@ snapdata script
 snapdata migrate --yes
 ```
 
+The CLI can also run ordered `.sql` files directly from a configured `Scripts`
+directory, so deployments do not require a migration project or compiled
+assembly. Up and Down SQL can use paired files or sections in one file.
+
 See the [migration library guide](src/SnapData.Migrations/README.md), the
 [CLI guide](src/SnapData.Migrations.Cli/README.md), and the runnable
 [SQLite migration example](examples/SqliteMigrations/README.md).

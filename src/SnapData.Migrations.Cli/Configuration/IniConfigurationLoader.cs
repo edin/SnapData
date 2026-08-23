@@ -89,7 +89,12 @@ internal sealed partial class IniConfigurationLoader
             NullIfWhiteSpace(Value("HistoryTable", "MigrationsTable"))
                 ?? "__snapdata_migrations",
             ParseLocking(Value("Locking")),
-            ParseTimeout(Value("Timeout")));
+            ParseTimeout(Value("Timeout")))
+        {
+            ScriptsPath = ResolveOptionalPath(
+                Value("Scripts", "ScriptsPath"),
+                configDirectory)
+        };
     }
 
     internal static string FindConfigFile(string startDirectory)

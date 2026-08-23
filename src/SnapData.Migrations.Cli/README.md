@@ -47,6 +47,44 @@ Connection=${env.APP_DATABASE_CONNECTION}
 Select the profile with `--profile production`. Use `--config <file>` to select
 a configuration file instead of upward `snap.ini` discovery.
 
+### SQL file migrations
+
+Migration projects are optional. To run migrations directly from SQL files,
+configure a scripts directory instead of `Project` or `Assembly`:
+
+```ini
+[Migration]
+Provider=Sqlite
+Connection=Data Source=app.db
+Scripts=Scripts
+Locking=Required
+```
+
+Name each Up migration after its ordered migration ID and optionally provide a
+paired Down file:
+
+```text
+Scripts/
+  20260823120509_create_users.sql
+  20260823120509_create_users.down.sql
+```
+
+Alternatively, keep both directions in one file using a marker on its own line:
+
+```sql
+CREATE TABLE users (id INTEGER PRIMARY KEY);
+
+-- snapdata:down
+
+DROP TABLE users;
+```
+
+The base filename is stored as the migration ID. A migration without Down SQL
+can be applied but cannot be rolled back. Defining Down SQL both inline and in a
+paired file is rejected. Each Up or Down section is submitted to the database as
+one raw SQL command; client-only batch separators such as SQL Server `GO` are not
+interpreted by SnapData.
+
 ## Commands
 
 ```shell

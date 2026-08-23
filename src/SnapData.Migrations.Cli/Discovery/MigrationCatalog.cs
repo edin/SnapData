@@ -8,14 +8,17 @@ internal sealed class MigrationCatalog : IReadOnlyList<MigrationDescriptor>
 
     public MigrationCatalog(
         IReadOnlyList<Migration> migrations,
-        string? bundleType)
+        string? bundleType,
+        Func<Migration, string>? detail = null)
     {
         ArgumentNullException.ThrowIfNull(migrations);
         Migrations = migrations;
         BundleType = bundleType;
         descriptors = migrations.Select(migration => new MigrationDescriptor(
             migration.Id,
-            migration.GetType().FullName ?? migration.GetType().Name)).ToArray();
+            detail?.Invoke(migration)
+                ?? migration.GetType().FullName
+                ?? migration.GetType().Name)).ToArray();
     }
 
     public MigrationCatalog(

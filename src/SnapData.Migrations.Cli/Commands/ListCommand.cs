@@ -31,10 +31,7 @@ internal sealed class ListCommand : AsyncCommand<ListCommand.Settings>
                     () => new MigrationSourceResolver().ResolveAsync(
                         configuration,
                         cancellationToken)).ConfigureAwait(false);
-            output.WriteMigrationList(
-                configuration,
-                source.AssemblyPath,
-                source.Catalog);
+            output.WriteMigrationList(source);
             return 0;
         }
         catch (Exception exception) when (
