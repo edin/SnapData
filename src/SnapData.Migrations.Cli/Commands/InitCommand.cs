@@ -13,6 +13,10 @@ internal sealed class InitCommand : Command<InitCommand.Settings>
         [CommandOption("-d|--directory <PATH>")]
         [Description("Directory to initialize. Defaults to the current directory.")]
         public string? Directory { get; init; }
+
+        [CommandOption("--sql")]
+        [Description("Create a project-free SQL migration workspace.")]
+        public bool Sql { get; init; }
     }
 
     protected override int Execute(
@@ -26,7 +30,10 @@ internal sealed class InitCommand : Command<InitCommand.Settings>
             var target = settings.Directory is null
                 ? Environment.CurrentDirectory
                 : Path.GetFullPath(settings.Directory, Environment.CurrentDirectory);
-            var result = new MigrationScaffolder().Create(target);
+            var scaffolder = new MigrationScaffolder();
+            var result = settings.Sql
+                ? scaffolder.CreateSql(target)
+                : scaffolder.Create(target);
             output.WriteInitialization(result);
             return 0;
         }

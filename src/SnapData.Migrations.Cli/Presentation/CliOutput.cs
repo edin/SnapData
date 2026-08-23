@@ -75,14 +75,22 @@ internal sealed class CliOutput(IAnsiConsole console)
             .AddColumn();
         grid.AddRow("[grey50]Config[/]", Markup.Escape(
             Path.GetRelativePath(result.Directory, result.ConfigFile)));
-        grid.AddRow("[grey50]Project[/]", Markup.Escape(
-            Path.GetRelativePath(result.Directory, result.ProjectFile)));
-        grid.AddRow("[grey50]Migrations[/]", Markup.Escape(
-            Path.GetDirectoryName(Path.GetRelativePath(
-                result.Directory, result.MigrationFiles[0])) ?? "Migrations"));
+        if (result.ProjectFile is not null)
+        {
+            grid.AddRow("[grey50]Project[/]", Markup.Escape(
+                Path.GetRelativePath(result.Directory, result.ProjectFile)));
+        }
+        grid.AddRow(
+            result.Kind == MigrationScaffoldKind.Sql
+                ? "[grey50]Scripts[/]"
+                : "[grey50]Migrations[/]",
+            Markup.Escape(Path.GetRelativePath(
+                result.Directory,
+                result.SourceDirectory)));
         console.Write(grid);
         console.WriteLine();
-        WriteSuccess("Ready. Run 'snapdata list' to discover the sample migrations.");
+        WriteSuccess(
+            "Ready. Run 'snapdata list' to discover the sample migrations.");
         console.WriteLine();
     }
 

@@ -20,6 +20,15 @@ Create a ready-to-run SQLite migration project in the current directory:
 snapdata init
 ```
 
+Create a project-free SQLite SQL migration workspace instead:
+
+```shell
+snapdata init --sql
+```
+
+This creates `snap.ini`, a `Scripts` directory, and two reversible sample
+migrations using paired `.sql` and `.down.sql` files.
+
 The initializer creates `snap.ini`, a separate `Migrations` project, a bundle,
 and two reversible sample migrations. It never overwrites an existing
 `snap.ini` or `Migrations` directory.

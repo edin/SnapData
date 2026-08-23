@@ -3,10 +3,18 @@ using System.Text;
 
 namespace SnapData.Migrations.Cli.Scaffolding;
 
+internal enum MigrationScaffoldKind
+{
+    CSharp,
+    Sql
+}
+
 internal sealed record MigrationScaffoldResult(
     string Directory,
     string ConfigFile,
-    string ProjectFile,
+    string SourceDirectory,
+    string? ProjectFile,
+    MigrationScaffoldKind Kind,
     IReadOnlyList<string> MigrationFiles);
 
 internal sealed class MigrationScaffolder
@@ -55,8 +63,65 @@ internal sealed class MigrationScaffolder
         return new MigrationScaffoldResult(
             target,
             configFile,
+            migrationsDirectory,
             projectFile,
+            MigrationScaffoldKind.CSharp,
             [createUsersFile, addUserEmailFile]);
+    }
+
+    public MigrationScaffoldResult CreateSql(string targetDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetDirectory);
+        var target = Path.GetFullPath(targetDirectory);
+        var configFile = Path.Combine(target, "snap.ini");
+        var scriptsDirectory = Path.Combine(target, "Scripts");
+        EnsureNewWorkspace(configFile, scriptsDirectory);
+
+        var createUsersFile = Path.Combine(scriptsDirectory, "001_create_users.sql");
+        var createUsersDownFile = Path.Combine(
+            scriptsDirectory, "001_create_users.down.sql");
+        var addUserEmailFile = Path.Combine(scriptsDirectory, "002_add_user_email.sql");
+        var addUserEmailDownFile = Path.Combine(
+            scriptsDirectory, "002_add_user_email.down.sql");
+        var ignoreFile = Path.Combine(scriptsDirectory, ".gitignore");
+
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(scriptsDirectory);
+        WriteNew(configFile, SqlConfigTemplate);
+        WriteNew(createUsersFile, SqlCreateUsersTemplate);
+        WriteNew(createUsersDownFile, SqlDropUsersTemplate);
+        WriteNew(addUserEmailFile, SqlAddUserEmailTemplate);
+        WriteNew(addUserEmailDownFile, SqlDropUserEmailTemplate);
+        WriteNew(ignoreFile, DatabaseIgnoreTemplate);
+
+        return new MigrationScaffoldResult(
+            target,
+            configFile,
+            scriptsDirectory,
+            ProjectFile: null,
+            MigrationScaffoldKind.Sql,
+            [createUsersFile, addUserEmailFile]);
+    }
+
+    private static void EnsureNewWorkspace(string configFile, string sourceDirectory)
+    {
+        if (!File.Exists(configFile) && !Directory.Exists(sourceDirectory))
+        {
+            return;
+        }
+
+        var existing = new List<string>();
+        if (File.Exists(configFile))
+        {
+            existing.Add(configFile);
+        }
+        if (Directory.Exists(sourceDirectory))
+        {
+            existing.Add(sourceDirectory);
+        }
+        throw new InvalidOperationException(
+            "Initialization stopped because the following path(s) already exist: " +
+            string.Join(", ", existing) + ". No files were changed.");
     }
 
     private static string? FindSourceProject(string startDirectory)
@@ -121,6 +186,36 @@ internal sealed class MigrationScaffolder
         TargetFramework=net8.0
         Bundle=App.Migrations.AppMigrationBundle
         Locking=Required
+        """;
+
+    private const string SqlConfigTemplate = """
+        [Migration]
+        Provider=Sqlite
+        Connection=Data Source=Scripts/app.db
+        Scripts=Scripts
+        Locking=Required
+        """;
+
+    private const string SqlCreateUsersTemplate = """
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """;
+
+    private const string SqlDropUsersTemplate = "DROP TABLE users;";
+
+    private const string SqlAddUserEmailTemplate = """
+        ALTER TABLE users ADD COLUMN email TEXT;
+        CREATE UNIQUE INDEX UX_users_email ON users (email);
+        """;
+
+    private const string SqlDropUserEmailTemplate = """
+        DROP INDEX UX_users_email;
+        ALTER TABLE users DROP COLUMN email;
         """;
 
     private const string BundleTemplate = """

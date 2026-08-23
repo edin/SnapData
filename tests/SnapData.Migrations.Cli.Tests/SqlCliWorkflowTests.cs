@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 namespace SnapData.Migrations.Cli.Tests;
 
+[Collection("CLI workflows")]
 public sealed class SqlCliWorkflowTests : IDisposable
 {
     private readonly string directory = Path.Combine(
@@ -14,31 +15,19 @@ public sealed class SqlCliWorkflowTests : IDisposable
     [Fact(Timeout = 60_000)]
     public async Task Runs_complete_sqlite_workflow_without_a_dotnet_project()
     {
-        var scripts = Directory.CreateDirectory(Path.Combine(directory, "Scripts")).FullName;
-        File.WriteAllText(
-            Path.Combine(directory, "snap.ini"),
-            """
-            [Migration]
-            Provider=Sqlite
-            Connection=Data Source=app.db
-            Scripts=Scripts
-            Locking=Required
-            """);
-        File.WriteAllText(
-            Path.Combine(scripts, "001_create_users.sql"),
-            """
-            CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
-
-            -- snapdata:down
-
-            DROP TABLE users;
-            """);
-        File.WriteAllText(
-            Path.Combine(scripts, "002_add_email.sql"),
-            "ALTER TABLE users ADD COLUMN email TEXT;");
-        File.WriteAllText(
-            Path.Combine(scripts, "002_add_email.down.sql"),
-            "ALTER TABLE users DROP COLUMN email;");
+        var initialized = await RunFromAsync(
+            Path.GetTempPath(),
+            "init",
+            "--sql",
+            "--directory",
+            directory);
+        AssertSuccess(initialized, "init --sql");
+        Assert.Contains("SnapData initialized", initialized.StandardOutput);
+        Assert.Contains("Scripts", initialized.StandardOutput);
+        Assert.False(File.Exists(Path.Combine(
+            directory,
+            "Scripts",
+            "App.Migrations.csproj")));
 
         var listed = await RunAsync("list");
         AssertSuccess(listed, "list");
@@ -58,7 +47,7 @@ public sealed class SqlCliWorkflowTests : IDisposable
         var migrated = await RunAsync("migrate", "--yes");
         AssertSuccess(migrated, "migrate");
         Assert.Contains("2 migrations applied", migrated.StandardOutput);
-        Assert.True(File.Exists(Path.Combine(directory, "app.db")));
+        Assert.True(File.Exists(Path.Combine(directory, "Scripts", "app.db")));
 
         var rolledBack = await RunAsync("rollback", "--steps", "2", "--yes");
         AssertSuccess(rolledBack, "rollback");
@@ -66,11 +55,16 @@ public sealed class SqlCliWorkflowTests : IDisposable
     }
 
     private async Task<ProcessResult> RunAsync(params string[] arguments)
+        => await RunFromAsync(directory, arguments);
+
+    private async Task<ProcessResult> RunFromAsync(
+        string workingDirectory,
+        params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            WorkingDirectory = directory,
+            WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

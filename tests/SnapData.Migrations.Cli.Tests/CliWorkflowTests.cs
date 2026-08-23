@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 namespace SnapData.Migrations.Cli.Tests;
 
+[Collection("CLI workflows")]
 public sealed class CliWorkflowTests : IDisposable
 {
     private readonly string directory;
@@ -41,6 +42,7 @@ public sealed class CliWorkflowTests : IDisposable
         var listed = await RunAsync(directory, "list");
         AssertSuccess(listed, "list");
         Assert.Contains("2 migrations discovered", listed.StandardOutput);
+        UseBuiltAssembly();
 
         var initialStatus = await RunAsync(directory, "status");
         AssertSuccess(initialStatus, "status");
@@ -73,6 +75,21 @@ public sealed class CliWorkflowTests : IDisposable
         AssertSuccess(rolledBackStatus, "status after rollback");
         Assert.Contains("2 pending migrations", rolledBackStatus.StandardOutput);
 #endif
+    }
+
+    private void UseBuiltAssembly()
+    {
+        var configFile = Path.Combine(directory, "snap.ini");
+        var lines = File.ReadAllLines(configFile)
+            .Where(line => !line.StartsWith(
+                "TargetFramework=",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(line => line.StartsWith(
+                    "Project=",
+                    StringComparison.OrdinalIgnoreCase)
+                ? "Assembly=Migrations/bin/Debug/net8.0/App.Migrations.dll"
+                : line);
+        File.WriteAllLines(configFile, lines);
     }
 
     private async Task<ProcessResult> RunAsync(
