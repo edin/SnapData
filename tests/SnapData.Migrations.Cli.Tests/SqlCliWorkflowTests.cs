@@ -52,6 +52,41 @@ public sealed class SqlCliWorkflowTests : IDisposable
         var rolledBack = await RunAsync("rollback", "--steps", "2", "--yes");
         AssertSuccess(rolledBack, "rollback");
         Assert.Contains("2 pending migrations", rolledBack.StandardOutput);
+
+        var paired = await RunAsync("add", "Create orders");
+        AssertSuccess(paired, "add paired SQL migration");
+        Assert.Contains("Migration created", paired.StandardOutput);
+        Assert.Contains("Up", paired.StandardOutput);
+        Assert.Contains("Down", paired.StandardOutput);
+
+        var combined = await RunAsync("add", "Add order items", "--combined");
+        AssertSuccess(combined, "add combined SQL migration");
+        Assert.Contains("Migration created", combined.StandardOutput);
+        Assert.Contains("File", combined.StandardOutput);
+
+        var upFiles = Directory.GetFiles(
+                Path.Combine(directory, "Scripts"),
+                "*.sql")
+            .Where(path => !path.EndsWith(
+                ".down.sql",
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        Assert.Equal(4, upFiles.Length);
+        Assert.Contains(
+            upFiles,
+            path => Path.GetFileName(path).EndsWith(
+                "_create_orders.sql",
+                StringComparison.Ordinal));
+        var combinedFile = Assert.Single(
+            upFiles,
+            path => Path.GetFileName(path).EndsWith(
+                "_add_order_items.sql",
+                StringComparison.Ordinal));
+        Assert.Contains("-- snapdata:down", File.ReadAllText(combinedFile));
+
+        var finalList = await RunAsync("list");
+        AssertSuccess(finalList, "list after add");
+        Assert.Contains("4 migrations discovered", finalList.StandardOutput);
     }
 
     private async Task<ProcessResult> RunAsync(params string[] arguments)

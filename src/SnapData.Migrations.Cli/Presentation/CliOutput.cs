@@ -94,6 +94,37 @@ internal sealed class CliOutput(IAnsiConsole console)
         console.WriteLine();
     }
 
+    public void WriteMigrationCreated(
+        MigrationCliConfiguration configuration,
+        SqlMigrationScaffoldResult result)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(result);
+        console.WriteLine();
+        console.Write(new Rule($"[bold {CliTheme.Accent}]Migration created[/]")
+            .RuleStyle(CliTheme.Border)
+            .LeftJustified());
+        console.WriteLine();
+        var configDirectory = Path.GetDirectoryName(configuration.ConfigFile)!;
+        var grid = new Grid()
+            .AddColumn(new GridColumn().NoWrap())
+            .AddColumn();
+        grid.AddRow("[grey50]ID[/]", Markup.Escape(result.Id));
+        grid.AddRow(
+            result.Combined ? "[grey50]File[/]" : "[grey50]Up[/]",
+            Markup.Escape(Path.GetRelativePath(configDirectory, result.UpFile)));
+        if (result.DownFile is not null)
+        {
+            grid.AddRow(
+                "[grey50]Down[/]",
+                Markup.Escape(Path.GetRelativePath(configDirectory, result.DownFile)));
+        }
+        console.Write(grid);
+        console.WriteLine();
+        WriteSuccess("Ready. Edit the generated SQL before applying the migration.");
+        console.WriteLine();
+    }
+
     public void WriteMigrationStatus(
         MigrationSource source,
         IReadOnlyList<MigrationStatusEntry> status)

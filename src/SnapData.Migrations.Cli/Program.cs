@@ -9,6 +9,8 @@ app.Configure(configuration =>
     configuration.SetApplicationVersion(CliVersion.Value);
     configuration.AddCommand<InitCommand>("init")
         .WithDescription("Create a ready-to-run migration project and configuration.");
+    configuration.AddCommand<AddCommand>("add")
+        .WithDescription("Create a migration in the configured workspace.");
     configuration.AddCommand<ListCommand>("list")
         .WithDescription("List migrations discovered in the configured assembly.");
     configuration.AddCommand<StatusCommand>("status")

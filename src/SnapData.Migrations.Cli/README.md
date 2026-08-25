@@ -29,6 +29,19 @@ snapdata init --sql
 This creates `snap.ini`, a `Scripts` directory, and two reversible sample
 migrations using paired `.sql` and `.down.sql` files.
 
+Add a timestamped migration to the configured SQL workspace:
+
+```shell
+snapdata add CreateOrders
+```
+
+This creates paired Up and Down files by default. Keep both directions in one
+file instead with:
+
+```shell
+snapdata add CreateOrders --combined
+```
+
 The initializer creates `snap.ini`, a separate `Migrations` project, a bundle,
 and two reversible sample migrations. It never overwrites an existing
 `snap.ini` or `Migrations` directory.
@@ -98,6 +111,8 @@ interpreted by SnapData.
 
 ```shell
 snapdata list
+snapdata add CreateOrders
+snapdata add CreateOrders --combined
 snapdata status
 snapdata script
 snapdata migrate
@@ -108,6 +123,7 @@ snapdata rollback --yes
 ```
 
 - `list` discovers migrations without connecting to the database.
+- `add` creates a timestamped migration in a configured SQL scripts directory.
 - `status` reads migration state without creating history or lock tables.
 - `script` previews highlighted SQL for pending migrations without applying it.
 - `migrate` validates history, confirms the plan, acquires the configured lock,

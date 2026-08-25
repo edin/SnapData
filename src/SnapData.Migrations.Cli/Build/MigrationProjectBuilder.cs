@@ -34,6 +34,7 @@ internal sealed class MigrationProjectBuilder(IProcessRunner? processRunner = nu
             "build",
             fullProjectPath,
             "--nologo",
+            "--disable-build-servers",
             "--configuration",
             configuration,
             "--verbosity",
@@ -57,6 +58,7 @@ internal sealed class MigrationProjectBuilder(IProcessRunner? processRunner = nu
             "msbuild",
             fullProjectPath,
             "-nologo",
+            "-nodeReuse:false",
             "-getProperty:TargetPath",
             $"-property:Configuration={configuration}"
         };
@@ -97,7 +99,13 @@ internal sealed class MigrationProjectBuilder(IProcessRunner? processRunner = nu
     {
         var result = await processRunner.RunAsync(
             "dotnet",
-            ["msbuild", projectPath, "-nologo", "-getProperty:TargetFrameworks"],
+            [
+                "msbuild",
+                projectPath,
+                "-nologo",
+                "-nodeReuse:false",
+                "-getProperty:TargetFrameworks"
+            ],
             workingDirectory,
             cancellationToken).ConfigureAwait(false);
         EnsureSuccess(result, $"Could not inspect migration project '{projectPath}'.");
@@ -106,7 +114,13 @@ internal sealed class MigrationProjectBuilder(IProcessRunner? processRunner = nu
         {
             result = await processRunner.RunAsync(
                 "dotnet",
-                ["msbuild", projectPath, "-nologo", "-getProperty:TargetFramework"],
+                [
+                    "msbuild",
+                    projectPath,
+                    "-nologo",
+                    "-nodeReuse:false",
+                    "-getProperty:TargetFramework"
+                ],
                 workingDirectory,
                 cancellationToken).ConfigureAwait(false);
             EnsureSuccess(result, $"Could not inspect migration project '{projectPath}'.");

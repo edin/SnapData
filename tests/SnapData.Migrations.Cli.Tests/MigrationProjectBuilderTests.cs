@@ -37,9 +37,13 @@ public sealed class MigrationProjectBuilderTests : IDisposable
         Assert.Contains("net8.0", runner.Calls[1].Arguments);
         Assert.Contains("--configuration", runner.Calls[1].Arguments);
         Assert.Contains("Release", runner.Calls[1].Arguments);
+        Assert.Contains("--disable-build-servers", runner.Calls[1].Arguments);
         Assert.Contains(
             "-property:TargetFramework=net8.0",
             runner.Calls[2].Arguments);
+        Assert.All(
+            runner.Calls.Where(call => call.Arguments.Contains("msbuild")),
+            call => Assert.Contains("-nodeReuse:false", call.Arguments));
     }
 
     [Fact]
