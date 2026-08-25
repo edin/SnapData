@@ -1,6 +1,9 @@
 using SnapData.Migrations.Cli;
 using SnapData.Migrations.Cli.Commands;
+using SnapData.Migrations.Cli.Runtime;
 using Spectre.Console.Cli;
+
+RoslynSdkResolver.Initialize();
 
 var app = new CommandApp();
 app.Configure(configuration =>

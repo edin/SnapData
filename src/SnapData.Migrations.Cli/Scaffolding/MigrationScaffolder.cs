@@ -185,6 +185,8 @@ internal sealed class MigrationScaffolder
         Project=Migrations/App.Migrations.csproj
         TargetFramework=net8.0
         Bundle=App.Migrations.AppMigrationBundle
+        MigrationsPath=Migrations
+        MigrationsNamespace=App.Migrations
         Locking=Required
         """;
 

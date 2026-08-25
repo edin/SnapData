@@ -39,14 +39,28 @@ public sealed class CliWorkflowTests : IDisposable
         AssertSuccess(initialized, "init");
         Assert.Contains("SnapData initialized", initialized.StandardOutput);
 
+        var added = await RunAsync(directory, "add", "Create orders");
+        AssertSuccess(added, "add C# migration");
+        Assert.Contains("Migration created", added.StandardOutput);
+        Assert.True(File.Exists(Path.Combine(
+            directory,
+            "Migrations",
+            "CreateOrders.cs")));
+        Assert.Contains(
+            "Add<CreateOrders>()",
+            File.ReadAllText(Path.Combine(
+                directory,
+                "Migrations",
+                "AppMigrationBundle.cs")));
+
         var listed = await RunAsync(directory, "list");
         AssertSuccess(listed, "list");
-        Assert.Contains("2 migrations discovered", listed.StandardOutput);
+        Assert.Contains("3 migrations discovered", listed.StandardOutput);
         UseBuiltAssembly();
 
         var initialStatus = await RunAsync(directory, "status");
         AssertSuccess(initialStatus, "status");
-        Assert.Contains("2 pending migrations", initialStatus.StandardOutput);
+        Assert.Contains("3 pending migrations", initialStatus.StandardOutput);
 
         var script = await RunAsync(directory, "script");
         AssertSuccess(script, "script");
@@ -55,25 +69,25 @@ public sealed class CliWorkflowTests : IDisposable
 
         var migrated = await RunAsync(directory, "migrate", "--yes");
         AssertSuccess(migrated, "migrate");
-        Assert.Contains("Database is up to date; 2 migrations applied", migrated.StandardOutput);
+        Assert.Contains("Database is up to date; 3 migrations applied", migrated.StandardOutput);
         Assert.True(File.Exists(Path.Combine(directory, "Migrations", "app.db")));
 
         var migratedStatus = await RunAsync(directory, "status");
         AssertSuccess(migratedStatus, "status after migrate");
-        Assert.Contains("Database is up to date; 2 migrations applied", migratedStatus.StandardOutput);
+        Assert.Contains("Database is up to date; 3 migrations applied", migratedStatus.StandardOutput);
 
         var rolledBack = await RunAsync(
             directory,
             "rollback",
             "--steps",
-            "2",
+            "3",
             "--yes");
         AssertSuccess(rolledBack, "rollback");
-        Assert.Contains("2 pending migrations", rolledBack.StandardOutput);
+        Assert.Contains("3 pending migrations", rolledBack.StandardOutput);
 
         var rolledBackStatus = await RunAsync(directory, "status");
         AssertSuccess(rolledBackStatus, "status after rollback");
-        Assert.Contains("2 pending migrations", rolledBackStatus.StandardOutput);
+        Assert.Contains("3 pending migrations", rolledBackStatus.StandardOutput);
 #endif
     }
 

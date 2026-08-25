@@ -42,6 +42,17 @@ file instead with:
 snapdata add CreateOrders --combined
 ```
 
+In a configured C# project workspace, the same command creates a migration
+class and registers it in the selected `MigrationBundle`:
+
+```shell
+snapdata add CreateOrders
+```
+
+The project source is parsed structurally before any file is changed. Assembly-
+only configurations cannot be scaffolded because their source bundle is not
+available to edit safely.
+
 The initializer creates `snap.ini`, a separate `Migrations` project, a bundle,
 and two reversible sample migrations. It never overwrites an existing
 `snap.ini` or `Migrations` directory.
@@ -123,7 +134,8 @@ snapdata rollback --yes
 ```
 
 - `list` discovers migrations without connecting to the database.
-- `add` creates a timestamped migration in a configured SQL scripts directory.
+- `add` creates and registers a timestamped migration in the configured C# or
+  SQL workspace.
 - `status` reads migration state without creating history or lock tables.
 - `script` previews highlighted SQL for pending migrations without applying it.
 - `migrate` validates history, confirms the plan, acquires the configured lock,

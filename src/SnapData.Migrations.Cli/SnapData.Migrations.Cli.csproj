@@ -30,6 +30,8 @@
   <ItemGroup>
     <PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="10.3.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Ini" Version="10.0.10" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0"
+                      PrivateAssets="All" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <PackageReference Include="MySqlConnector" Version="2.6.1" />

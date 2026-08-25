@@ -32,22 +32,29 @@ internal sealed class AddCommand : Command<AddCommand.Settings>
                 Environment.CurrentDirectory,
                 settings.Profile,
                 settings.ConfigFile);
-            if (configuration.ScriptsPath is null)
+            if (configuration.ScriptsPath is not null)
+            {
+                if (configuration.ProjectPath is not null || configuration.AssemblyPath is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"Migration Scripts cannot be combined with Project or Assembly in '{configuration.ConfigFile}'.");
+                }
+                var result = new SqlMigrationScaffolder().Create(
+                    configuration.ScriptsPath,
+                    settings.Name,
+                    settings.Combined);
+                output.WriteMigrationCreated(configuration, result);
+                return 0;
+            }
+            if (settings.Combined)
             {
                 throw new InvalidOperationException(
-                    $"SQL migration creation requires Scripts to be configured in '{configuration.ConfigFile}'.");
+                    "The --combined option is available only for SQL migration workspaces.");
             }
-            if (configuration.ProjectPath is not null || configuration.AssemblyPath is not null)
-            {
-                throw new InvalidOperationException(
-                    $"Migration Scripts cannot be combined with Project or Assembly in '{configuration.ConfigFile}'.");
-            }
-
-            var result = new SqlMigrationScaffolder().Create(
-                configuration.ScriptsPath,
-                settings.Name,
-                settings.Combined);
-            output.WriteMigrationCreated(configuration, result);
+            var csharpResult = new CSharpMigrationScaffolder().Create(
+                configuration,
+                settings.Name);
+            output.WriteMigrationCreated(configuration, csharpResult);
             return 0;
         }
         catch (Exception exception) when (exception is

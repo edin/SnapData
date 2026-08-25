@@ -125,6 +125,38 @@ internal sealed class CliOutput(IAnsiConsole console)
         console.WriteLine();
     }
 
+    public void WriteMigrationCreated(
+        MigrationCliConfiguration configuration,
+        CSharpMigrationScaffoldResult result)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(result);
+        console.WriteLine();
+        console.Write(new Rule($"[bold {CliTheme.Accent}]Migration created[/]")
+            .RuleStyle(CliTheme.Border)
+            .LeftJustified());
+        console.WriteLine();
+        var configDirectory = Path.GetDirectoryName(configuration.ConfigFile)!;
+        var grid = new Grid()
+            .AddColumn(new GridColumn().NoWrap())
+            .AddColumn();
+        grid.AddRow("[grey50]ID[/]", Markup.Escape(result.Id));
+        grid.AddRow(
+            "[grey50]Migration[/]",
+            Markup.Escape(Path.GetRelativePath(
+                configDirectory,
+                result.MigrationFile)));
+        grid.AddRow(
+            "[grey50]Bundle[/]",
+            Markup.Escape(Path.GetRelativePath(
+                configDirectory,
+                result.BundleFile)));
+        console.Write(grid);
+        console.WriteLine();
+        WriteSuccess("Ready. Define the Up and Down migration plans before applying it.");
+        console.WriteLine();
+    }
+
     public void WriteMigrationStatus(
         MigrationSource source,
         IReadOnlyList<MigrationStatusEntry> status)

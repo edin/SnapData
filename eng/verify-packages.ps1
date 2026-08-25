@@ -82,21 +82,23 @@ try {
 
     Push-Location $workspace
     try {
+        $added = Invoke-SnapData add CreateOrders
         $list = Invoke-SnapData list
         $status = Invoke-SnapData status
         $script = Invoke-SnapData script
         $migrated = Invoke-SnapData migrate --yes
-        $rolledBack = Invoke-SnapData rollback --steps 2 --yes
+        $rolledBack = Invoke-SnapData rollback --steps 3 --yes
     }
     finally {
         Pop-Location
     }
 
-    if ($list -notmatch "2 migrations discovered" -or
-        $status -notmatch "2 pending migrations" -or
+    if ($added -notmatch "Migration created" -or
+        $list -notmatch "3 migrations discovered" -or
+        $status -notmatch "3 pending migrations" -or
         $script -notmatch "Pending migration SQL" -or
-        $migrated -notmatch "2 migrations applied" -or
-        $rolledBack -notmatch "2 pending migrations") {
+        $migrated -notmatch "3 migrations applied" -or
+        $rolledBack -notmatch "3 pending migrations") {
         throw "The packaged CLI workflow did not report the expected migration states."
     }
 }
