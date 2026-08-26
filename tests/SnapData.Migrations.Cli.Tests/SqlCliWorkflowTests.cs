@@ -35,9 +35,10 @@ public sealed class SqlCliWorkflowTests : IDisposable
         Assert.Contains("SQL files", listed.StandardOutput);
         Assert.DoesNotContain("Building", listed.StandardOutput);
 
-        var status = await RunAsync("status");
+        var status = await RunAsync("status", "--no-color");
         AssertSuccess(status, "status");
         Assert.Contains("2 pending migrations", status.StandardOutput);
+        Assert.DoesNotContain("\u001b[", status.StandardOutput);
 
         var script = await RunAsync("script");
         AssertSuccess(script, "script");

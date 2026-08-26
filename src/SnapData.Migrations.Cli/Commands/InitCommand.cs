@@ -8,7 +8,7 @@ namespace SnapData.Migrations.Cli.Commands;
 
 internal sealed class InitCommand : Command<InitCommand.Settings>
 {
-    internal sealed class Settings : CommandSettings
+    internal sealed class Settings : CliCommandSettings
     {
         [CommandOption("-d|--directory <PATH>")]
         [Description("Directory to initialize. Defaults to the current directory.")]
@@ -24,7 +24,7 @@ internal sealed class InitCommand : Command<InitCommand.Settings>
         Settings settings,
         CancellationToken cancellationToken)
     {
-        var output = new CliOutput(AnsiConsole.Console);
+        var output = new CliOutput(CliConsole.Create(settings.NoColor));
         try
         {
             var target = settings.Directory is null

@@ -22,7 +22,8 @@ internal sealed class MigrateCommand : AsyncCommand<MigrateCommand.Settings>
         Settings settings,
         CancellationToken cancellationToken)
     {
-        var output = new CliOutput(AnsiConsole.Console);
+        var console = CliConsole.Create(settings.NoColor);
+        var output = new CliOutput(console);
         try
         {
             var configuration = new IniConfigurationLoader().Load(
@@ -65,7 +66,7 @@ internal sealed class MigrateCommand : AsyncCommand<MigrateCommand.Settings>
                         "Interactive confirmation is unavailable. Use --yes to apply pending migrations.");
                     return 1;
                 }
-                var confirmed = AnsiConsole.Prompt(new ConfirmationPrompt(
+                var confirmed = console.Prompt(new ConfirmationPrompt(
                     $"Apply {preflight.PendingMigrations.Count} pending " +
                     "migration(s)?")
                 {

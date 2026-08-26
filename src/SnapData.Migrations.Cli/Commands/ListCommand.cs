@@ -15,7 +15,7 @@ internal sealed class ListCommand : AsyncCommand<ListCommand.Settings>
         Settings settings,
         CancellationToken cancellationToken)
     {
-        var output = new CliOutput(AnsiConsole.Console);
+        var output = new CliOutput(CliConsole.Create(settings.NoColor));
         try
         {
             var configuration = new IniConfigurationLoader().Load(

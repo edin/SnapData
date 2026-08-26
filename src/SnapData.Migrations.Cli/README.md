@@ -125,6 +125,7 @@ snapdata list
 snapdata add CreateOrders
 snapdata add CreateOrders --combined
 snapdata status
+snapdata status --no-color
 snapdata script
 snapdata script --output deployment.sql
 snapdata script --output deployment.sql --force
@@ -150,6 +151,10 @@ snapdata rollback --yes
 
 `--yes` skips confirmation and is intended for CI and other non-interactive
 environments.
+
+`--no-color` is available on every command. Color is also disabled automatically
+when output is redirected or the standard `NO_COLOR` environment variable is
+present.
 
 ## Locking
 

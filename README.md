@@ -100,6 +100,7 @@ script, apply, or roll back its migrations:
 snapdata init
 snapdata list
 snapdata status
+snapdata status --no-color
 snapdata script
 snapdata script --output deployment.sql
 snapdata migrate --yes

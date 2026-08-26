@@ -32,7 +32,7 @@ migrations using either C# bundles or project-free SQL files.
 - Add `snapdata add <name>` for C# migrations.
 - Scaffold paired and combined Up/Down SQL formats.
 - [x] Add `snapdata script --output <file>`.
-- Add plain/no-color output for CI environments.
+- [x] Add plain/no-color output for CI environments.
 - Complete CLI documentation and examples.
 - Pack, install, and validate all four packages as one release set.
 - Publish release notes and verify a clean installation.

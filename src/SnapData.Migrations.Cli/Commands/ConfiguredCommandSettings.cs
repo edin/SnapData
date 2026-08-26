@@ -3,7 +3,7 @@ using Spectre.Console.Cli;
 
 namespace SnapData.Migrations.Cli.Commands;
 
-internal abstract class ConfiguredCommandSettings : CommandSettings
+internal abstract class ConfiguredCommandSettings : CliCommandSettings
 {
     [CommandOption("-c|--config <FILE>")]
     [Description("Path to a migration INI file. Defaults to upward snap.ini discovery.")]

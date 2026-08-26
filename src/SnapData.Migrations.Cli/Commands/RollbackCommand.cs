@@ -28,7 +28,8 @@ internal sealed class RollbackCommand : AsyncCommand<RollbackCommand.Settings>
         Settings settings,
         CancellationToken cancellationToken)
     {
-        var output = new CliOutput(AnsiConsole.Console);
+        var console = CliConsole.Create(settings.NoColor);
+        var output = new CliOutput(console);
         try
         {
             if (settings.Steps <= 0)
@@ -90,7 +91,7 @@ internal sealed class RollbackCommand : AsyncCommand<RollbackCommand.Settings>
                         "Interactive confirmation is unavailable. Use --yes to revert migrations.");
                     return 1;
                 }
-                var confirmed = AnsiConsole.Prompt(new ConfirmationPrompt(
+                var confirmed = console.Prompt(new ConfirmationPrompt(
                     $"Revert {selected.Count} applied migration(s)?")
                 {
                     DefaultValue = false
