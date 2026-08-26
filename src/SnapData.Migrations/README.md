@@ -10,7 +10,7 @@ SQLite, SQL Server, PostgreSQL, MySQL, and Firebird.
 ## Installation
 
 ```powershell
-dotnet add package SnapData.Migrations --prerelease
+dotnet add package SnapData.Migrations
 ```
 
 Install the application's ADO.NET provider separately. The package targets .NET
@@ -198,7 +198,7 @@ For a project-free folder of `.sql` files, use the CLI. It supports paired
 ## CLI workflow
 
 ```powershell
-dotnet tool install --global SnapData.Migrations.Cli --prerelease
+dotnet tool install --global SnapData.Migrations.Cli
 
 snapdata init
 snapdata add CreateOrders

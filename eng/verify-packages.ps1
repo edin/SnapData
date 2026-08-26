@@ -64,6 +64,9 @@ if ($reportedVersion -notmatch [regex]::Escape($Version)) {
 $workspace = Join-Path `
     ([System.IO.Path]::GetTempPath()) `
     "snapdata-package-smoke-$([Guid]::NewGuid().ToString('N'))"
+$sqlWorkspace = Join-Path `
+    ([System.IO.Path]::GetTempPath()) `
+    "snapdata-sql-package-smoke-$([Guid]::NewGuid().ToString('N'))"
 
 function Invoke-SnapData {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]] $Arguments)
@@ -84,8 +87,9 @@ try {
     try {
         $added = Invoke-SnapData add CreateOrders
         $list = Invoke-SnapData list
-        $status = Invoke-SnapData status
+        $status = Invoke-SnapData status --no-color
         $script = Invoke-SnapData script
+        $scriptFile = Invoke-SnapData script --output deployment.sql
         $migrated = Invoke-SnapData migrate --yes
         $rolledBack = Invoke-SnapData rollback --steps 3 --yes
     }
@@ -97,14 +101,45 @@ try {
         $list -notmatch "3 migrations discovered" -or
         $status -notmatch "3 pending migrations" -or
         $script -notmatch "Pending migration SQL" -or
+        $scriptFile -notmatch "Wrote .* for 3 pending migrations" -or
+        -not (Test-Path -LiteralPath (Join-Path $workspace "deployment.sql")) -or
         $migrated -notmatch "3 migrations applied" -or
         $rolledBack -notmatch "3 pending migrations") {
         throw "The packaged CLI workflow did not report the expected migration states."
+    }
+
+    New-Item -ItemType Directory -Path $sqlWorkspace | Out-Null
+    Copy-Item -LiteralPath $nugetConfig -Destination $sqlWorkspace
+    Invoke-SnapData init --sql --directory $sqlWorkspace | Out-Null
+
+    Push-Location $sqlWorkspace
+    try {
+        $sqlList = Invoke-SnapData list
+        $sqlScript = Invoke-SnapData script --output deployment.sql
+        $sqlMigrated = Invoke-SnapData migrate --yes
+        $sqlRolledBack = Invoke-SnapData rollback --steps 2 --yes
+    }
+    finally {
+        Pop-Location
+    }
+
+    $deploymentSql = Get-Content `
+        -LiteralPath (Join-Path $sqlWorkspace "deployment.sql") `
+        -Raw
+    if ($sqlList -notmatch "2 migrations discovered" -or
+        $sqlScript -notmatch "Wrote .* for 2 pending migrations" -or
+        $deploymentSql -notmatch "-- Migration: 001_create_users" -or
+        $sqlMigrated -notmatch "2 migrations applied" -or
+        $sqlRolledBack -notmatch "2 pending migrations") {
+        throw "The packaged project-free SQL workflow did not report the expected migration states."
     }
 }
 finally {
     if (Test-Path -LiteralPath $workspace) {
         Remove-Item -LiteralPath $workspace -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $sqlWorkspace) {
+        Remove-Item -LiteralPath $sqlWorkspace -Recurse -Force
     }
 }
 

@@ -34,8 +34,9 @@ migrations using either C# bundles or project-free SQL files.
 - [x] Add `snapdata script --output <file>`.
 - [x] Add plain/no-color output for CI environments.
 - [x] Complete package and CLI documentation and examples.
-- Pack, install, and validate all four packages as one release set.
-- Publish release notes and verify a clean installation.
+- [x] Pack, install, and validate all four packages as one release set.
+- [x] Prepare release notes and verify a clean installation.
+- Publish the release notes with the tagged GitHub release.
 
 ## 0.4.0: data-writing improvements
 

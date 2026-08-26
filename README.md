@@ -30,10 +30,11 @@ var rows = await session
 
 ## Status
 
-SnapData is currently `0.1.0-alpha.4`. The API is usable but may still change
-before a stable release.
+SnapData `0.2.0` is the first stable package set. The API may still evolve
+between minor `0.x` releases as the project progresses toward 1.0.
 
-See the [release roadmap](ROADMAP.md) for the planned milestones toward 1.0.
+See the [changelog](CHANGELOG.md) for release notes and the
+[release roadmap](ROADMAP.md) for planned milestones toward 1.0.
 
 The package contains native `net8.0` and `net10.0` assemblies. .NET 9
 applications use the compatible `net8.0` assembly through NuGet's normal
@@ -60,7 +61,7 @@ providers.
 ## Installation
 
 ```powershell
-dotnet add package SnapData --prerelease
+dotnet add package SnapData
 ```
 
 Install the ADO.NET provider used by the application separately, for example:

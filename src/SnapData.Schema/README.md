@@ -9,7 +9,7 @@ SnapData for queries and commands do not need this optional package.
 ## Installation
 
 ```powershell
-dotnet add package SnapData.Schema --prerelease
+dotnet add package SnapData.Schema
 ```
 
 Install the application's ADO.NET provider separately. The package targets .NET

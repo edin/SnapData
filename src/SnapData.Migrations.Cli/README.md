@@ -7,7 +7,7 @@ migrations.
 ## Install
 
 ```shell
-dotnet tool install --global SnapData.Migrations.Cli --version 0.1.0-alpha.4
+dotnet tool install --global SnapData.Migrations.Cli
 ```
 
 The installed command is `snapdata`.
