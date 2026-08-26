@@ -126,6 +126,8 @@ snapdata add CreateOrders
 snapdata add CreateOrders --combined
 snapdata status
 snapdata script
+snapdata script --output deployment.sql
+snapdata script --output deployment.sql --force
 snapdata migrate
 snapdata migrate --yes
 snapdata rollback
@@ -138,6 +140,8 @@ snapdata rollback --yes
   SQL workspace.
 - `status` reads migration state without creating history or lock tables.
 - `script` previews highlighted SQL for pending migrations without applying it.
+  `--output <file>` writes the same pending migrations as plain UTF-8 SQL for
+  review or deployment. Existing files are protected unless `--force` is used.
 - `migrate` validates history, confirms the plan, acquires the configured lock,
   and applies pending migrations.
 - `rollback` is an explicitly destructive, development-oriented command. It

@@ -44,10 +44,45 @@ public sealed class SqlCliWorkflowTests : IDisposable
         Assert.Contains("CREATE TABLE users", script.StandardOutput);
         Assert.Contains("ADD COLUMN email", script.StandardOutput);
 
+        var deploymentFile = Path.Combine(directory, "deployment.sql");
+        var exported = await RunAsync(
+            "script",
+            "--output",
+            "deployment.sql");
+        AssertSuccess(exported, "script --output");
+        Assert.Contains("Wrote 2 SQL statements", exported.StandardOutput);
+        var deploymentSql = File.ReadAllText(deploymentFile);
+        Assert.Contains("-- Migration: 001_create_users", deploymentSql);
+        Assert.Contains("CREATE TABLE users", deploymentSql);
+        Assert.DoesNotContain("Pending migration SQL", deploymentSql);
+
+        var protectedOutput = await RunAsync(
+            "script",
+            "--output",
+            "deployment.sql");
+        Assert.Equal(1, protectedOutput.ExitCode);
+        Assert.Contains("--force", protectedOutput.StandardOutput);
+
+        var replaced = await RunAsync(
+            "script",
+            "--output",
+            "deployment.sql",
+            "--force");
+        AssertSuccess(replaced, "script --output --force");
+
         var migrated = await RunAsync("migrate", "--yes");
         AssertSuccess(migrated, "migrate");
         Assert.Contains("2 migrations applied", migrated.StandardOutput);
         Assert.True(File.Exists(Path.Combine(directory, "Scripts", "app.db")));
+
+        var exportedWhenCurrent = await RunAsync(
+            "script",
+            "--output",
+            "deployment.sql",
+            "--force");
+        AssertSuccess(exportedWhenCurrent, "script --output when current");
+        Assert.Contains("Database is up to date", exportedWhenCurrent.StandardOutput);
+        Assert.Equal(deploymentSql, File.ReadAllText(deploymentFile));
 
         var rolledBack = await RunAsync("rollback", "--steps", "2", "--yes");
         AssertSuccess(rolledBack, "rollback");

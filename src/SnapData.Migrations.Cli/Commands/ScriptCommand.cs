@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Data.Common;
 using SnapData.Migrations.Cli.Configuration;
 using SnapData.Migrations.Cli.Presentation;
@@ -9,7 +10,16 @@ namespace SnapData.Migrations.Cli.Commands;
 
 internal sealed class ScriptCommand : AsyncCommand<ScriptCommand.Settings>
 {
-    internal sealed class Settings : ConfiguredCommandSettings;
+    internal sealed class Settings : ConfiguredCommandSettings
+    {
+        [CommandOption("-o|--output <FILE>")]
+        [Description("Write pending migration SQL to a plain deployment file.")]
+        public string? OutputFile { get; init; }
+
+        [CommandOption("--force")]
+        [Description("Replace the output file if it already exists.")]
+        public bool Force { get; init; }
+    }
 
     protected override async Task<int> ExecuteAsync(
         CommandContext context,
@@ -55,7 +65,21 @@ internal sealed class ScriptCommand : AsyncCommand<ScriptCommand.Settings>
                 () => runner.PreviewAsync(
                     preflight.PendingMigrations,
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
-            output.WriteScripts(source, scripts);
+            if (settings.OutputFile is null)
+            {
+                output.WriteScripts(source, scripts);
+            }
+            else
+            {
+                var outputFile = Path.GetFullPath(
+                    settings.OutputFile,
+                    Environment.CurrentDirectory);
+                new MigrationScriptFileWriter().Write(
+                    outputFile,
+                    scripts,
+                    settings.Force);
+                output.WriteScriptWritten(outputFile, scripts);
+            }
             return 0;
         }
         catch (Exception exception) when (exception is

@@ -67,6 +67,17 @@ public sealed class CliWorkflowTests : IDisposable
         Assert.Contains("Pending migration SQL", script.StandardOutput);
         Assert.Contains("CREATE TABLE", script.StandardOutput, StringComparison.OrdinalIgnoreCase);
 
+        var exported = await RunAsync(
+            directory,
+            "script",
+            "--output",
+            "deployment.sql");
+        AssertSuccess(exported, "script --output");
+        Assert.Contains("Wrote", exported.StandardOutput);
+        Assert.Contains(
+            "-- Migration:",
+            File.ReadAllText(Path.Combine(directory, "deployment.sql")));
+
         var migrated = await RunAsync(directory, "migrate", "--yes");
         AssertSuccess(migrated, "migrate");
         Assert.Contains("Database is up to date; 3 migrations applied", migrated.StandardOutput);

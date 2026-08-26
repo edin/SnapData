@@ -234,6 +234,19 @@ internal sealed class CliOutput(IAnsiConsole console)
         console.WriteLine();
     }
 
+    public void WriteScriptWritten(
+        string outputFile,
+        IReadOnlyList<MigrationScript> scripts)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputFile);
+        ArgumentNullException.ThrowIfNull(scripts);
+        var statements = scripts.Sum(script => script.Statements.Count);
+        WriteSuccess(
+            $"Wrote {statements} SQL statement{Plural(statements)} for " +
+            $"{scripts.Count} pending migration{Plural(scripts.Count)} to " +
+            $"{Path.GetRelativePath(Environment.CurrentDirectory, outputFile)}.");
+    }
+
     public void WriteMigrationPlan(
         MigrationSource source,
         IReadOnlyList<Migration> pendingMigrations)

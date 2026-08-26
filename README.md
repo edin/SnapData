@@ -101,6 +101,7 @@ snapdata init
 snapdata list
 snapdata status
 snapdata script
+snapdata script --output deployment.sql
 snapdata migrate --yes
 ```
 
