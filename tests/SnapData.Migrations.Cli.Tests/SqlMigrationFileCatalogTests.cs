@@ -49,6 +49,22 @@ public sealed class SqlMigrationFileCatalogTests : IDisposable
     }
 
     [Fact]
+    public async Task Loads_combined_sections_with_crlf_line_endings()
+    {
+        Write(
+            "001_create_users.sql",
+            "CREATE TABLE users (id INTEGER);\r\n\r\n" +
+            "  -- SnapData:Down\r\n\r\n" +
+            "DROP TABLE users;\r\n");
+
+        var catalog = await new SqlMigrationFileCatalog().LoadAsync(directory);
+        var migration = Assert.IsType<SqlMigration>(Assert.Single(catalog.Migrations));
+
+        Assert.Equal("CREATE TABLE users (id INTEGER);", Assert.Single(migration.UpStatements));
+        Assert.Equal("DROP TABLE users;", Assert.Single(migration.DownStatements!));
+    }
+
+    [Fact]
     public async Task Rejects_inline_and_paired_down_sql_for_the_same_migration()
     {
         Write(

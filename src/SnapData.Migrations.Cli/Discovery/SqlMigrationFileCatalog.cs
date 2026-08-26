@@ -120,7 +120,7 @@ internal sealed partial class SqlMigrationFileCatalog
     }
 
     [GeneratedRegex(
-        @"^[\t ]*--[\t ]*snapdata:down[\t ]*$",
+        @"^[\t ]*--[\t ]*snapdata:down[\t ]*\r?$",
         RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant)]
     private static partial Regex DownMarker();
 

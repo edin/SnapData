@@ -28,4 +28,17 @@ public sealed class CliConsoleTests
             outputRedirected: false,
             noColorEnvironment: null));
     }
+
+    [Fact]
+    public void Plain_writer_removes_ansi_sequences_across_write_boundaries()
+    {
+        using var output = new StringWriter();
+        using var writer = new AnsiStrippingTextWriter(output);
+
+        writer.Write("before\u001b");
+        writer.Write("[1;31mred");
+        writer.Write("\u001b[0m after");
+
+        Assert.Equal("beforered after", output.ToString());
+    }
 }

@@ -6,20 +6,22 @@ internal static class CliConsole
 {
     public static IAnsiConsole Create(bool noColor)
     {
-        if (!ShouldDisableColor(
-                noColor,
-                Console.IsOutputRedirected,
-                Environment.GetEnvironmentVariable("NO_COLOR")))
+        var disableColor = ShouldDisableColor(
+            noColor,
+            Console.IsOutputRedirected,
+            Environment.GetEnvironmentVariable("NO_COLOR"));
+        if (!disableColor)
         {
             return AnsiConsole.Console;
         }
 
+        var plainOutput = new AnsiStrippingTextWriter(Console.Out);
         return AnsiConsole.Create(new AnsiConsoleSettings
         {
             Ansi = AnsiSupport.No,
             ColorSystem = ColorSystemSupport.NoColors,
             Interactive = InteractionSupport.No,
-            Out = new AnsiConsoleOutput(Console.Out)
+            Out = new AnsiConsoleOutput(plainOutput)
         });
     }
 
