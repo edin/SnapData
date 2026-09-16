@@ -2,6 +2,42 @@
 
 Notable changes to SnapData are documented here.
 
+## Unreleased - 0.4 development
+
+- Hardened session/transaction cleanup after rollback or disposal failure;
+  secondary errors remain inspectable, failed cleanup prevents session reuse,
+  and internal batch/opening cleanup preserves original operation exceptions.
+- Added isolated packed API consumers for .NET 8/10, including legacy custom
+  compiler hooks and custom executor compatibility. New executor operations
+  have explicit unsupported defaults rather than mandatory implementation.
+- Fixed export delimiters after trailing SQL comments; exported files warn that
+  raw execution does not update history or acquire the migration lock.
+- Empty exports now produce an explicit no-op file, respecting overwrite
+  protection and replacing stale SQL only with `--force`.
+- Plain/no-color output preserves interactive confirmation; unavailable
+  interaction reports a clear `--yes` requirement.
+- Added mapped `InsertManyAsync` with bounded row/parameter budgets, explicit
+  transaction ownership, successful-operation counts, and no input hydration.
+  SQLite and four live provider contracts cover batching and rollback; Firebird
+  uses single-row fallback and rejects unsupported standalone multi-row VALUES.
+- Added explicit default-only SQL/typed inserts and generated-only entity
+  inserts, verified against all five providers including SQLite.
+- Added metadata-aware generated insert compilation; MySQL now rejects entity
+  computed-column hydration instead of misusing LAST_INSERT_ID().
+- Added typed `SetExpression` and aligned typed insert `Values` replacement
+  behaviour with low-level insert builders.
+
+- Added explicit-target single-row upsert SQL and entity builders for SQLite,
+  PostgreSQL, and SQL Server, with update-selected-columns and do-nothing modes.
+- Added live PostgreSQL and SQL Server upsert/returning contracts, including
+  verified lock contention, rollback, and SQL Server blocked cancellation.
+- Added compiler capability flags and provider-bound `Compile`/`Build` on
+  session and transaction APIs without opening database connections.
+- Added typed mutation returning with scalar/DTO list, single, and optional
+  single terminals; upsert supports RETURNING/OUTPUT on the three providers.
+- These features are not yet published. MySQL/Firebird explicit-target upsert
+  and automatic upsert generated-value hydration remain unsupported.
+
 ## 0.2.0 - 2026-08-26
 
 SnapData 0.2.0 is the first stable release set. All four packages share the same

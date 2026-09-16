@@ -85,7 +85,7 @@ internal sealed class RollbackCommand : AsyncCommand<RollbackCommand.Settings>
             output.WriteRollbackPlan(source, selected);
             if (!settings.Yes)
             {
-                if (Console.IsInputRedirected)
+                if (Console.IsInputRedirected || !console.Profile.Capabilities.Interactive)
                 {
                     output.WriteError(
                         "Interactive confirmation is unavailable. Use --yes to revert migrations.");

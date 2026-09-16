@@ -60,5 +60,6 @@ public sealed class SourceQuery
         return new ProjectedQuery<TResult>(_executor, _query);
     }
 
-    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
+    public SqlQuery Build(IQueryCompiler? compiler = null) =>
+        compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 }

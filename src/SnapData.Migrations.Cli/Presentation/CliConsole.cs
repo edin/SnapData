@@ -20,7 +20,7 @@ internal static class CliConsole
         {
             Ansi = AnsiSupport.No,
             ColorSystem = ColorSystemSupport.NoColors,
-            Interactive = InteractionSupport.No,
+            Interactive = GetInteractionSupport(Console.IsInputRedirected, Console.IsOutputRedirected),
             Out = new AnsiConsoleOutput(plainOutput)
         });
     }
@@ -30,4 +30,7 @@ internal static class CliConsole
         bool outputRedirected,
         string? noColorEnvironment) =>
         requested || outputRedirected || noColorEnvironment is not null;
+
+    internal static InteractionSupport GetInteractionSupport(bool inputRedirected, bool outputRedirected) =>
+        inputRedirected || outputRedirected ? InteractionSupport.No : InteractionSupport.Yes;
 }

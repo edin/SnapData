@@ -5,6 +5,17 @@ namespace SnapData.Migrations.Cli.Tests;
 public sealed class CliConsoleTests
 {
     [Theory]
+    [InlineData(false, false, Spectre.Console.InteractionSupport.Yes)]
+    [InlineData(true, false, Spectre.Console.InteractionSupport.No)]
+    [InlineData(false, true, Spectre.Console.InteractionSupport.No)]
+    [InlineData(true, true, Spectre.Console.InteractionSupport.No)]
+    public void Plain_output_keeps_prompts_only_when_both_streams_are_interactive(
+        bool inputRedirected, bool outputRedirected, Spectre.Console.InteractionSupport expected)
+    {
+        Assert.Equal(expected, CliConsole.GetInteractionSupport(inputRedirected, outputRedirected));
+    }
+
+    [Theory]
     [InlineData(true, false, null)]
     [InlineData(false, true, null)]
     [InlineData(false, false, "")]

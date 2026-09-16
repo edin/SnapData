@@ -9,6 +9,7 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
     private bool _openedBorrowedConnection;
     private DbTransactionSession? _activeTransaction;
     private bool _disposed;
+    private bool _transactionCleanupFailed;
 
     private DbSession(
         DbConnection connection,
@@ -60,11 +61,7 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
         IsolationLevel isolationLevel = IsolationLevel.Unspecified,
         CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_activeTransaction is not null)
-        {
-            throw new InvalidOperationException("This session already has an active transaction.");
-        }
+        EnsureCanExecute();
 
         if (Connection.State != ConnectionState.Open)
         {
@@ -85,6 +82,10 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
     protected override void EnsureCanExecute()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_transactionCleanupFailed)
+        {
+            throw new InvalidOperationException("Transaction cleanup failed. Dispose this session; the connection state is uncertain.");
+        }
         if (_activeTransaction is not null)
         {
             throw new InvalidOperationException(
@@ -107,17 +108,17 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
             return;
         }
 
-        _activeTransaction?.Dispose();
-        if (_ownsConnection)
-        {
-            Connection.Dispose();
-        }
-        else if (_openedBorrowedConnection && Connection.State != ConnectionState.Closed)
-        {
-            Connection.Close();
-        }
-
         _disposed = true;
+        Exception? failure = null;
+        try { _activeTransaction?.Dispose(); }
+        catch (Exception error) { failure = error; }
+        try
+        {
+            if (_ownsConnection) Connection.Dispose();
+            else if (_openedBorrowedConnection && Connection.State != ConnectionState.Closed) Connection.Close();
+        }
+        catch (Exception error) { failure = CleanupErrors.Add(failure, error); }
+        CleanupErrors.ThrowIfAny(failure);
     }
 
     public async ValueTask DisposeAsync()
@@ -127,25 +128,26 @@ public sealed class DbSession : DbExecutor, IDisposable, IAsyncDisposable
             return;
         }
 
-        if (_activeTransaction is not null)
-        {
-            await _activeTransaction.DisposeAsync();
-        }
-
-        if (_ownsConnection)
-        {
-            await Connection.DisposeAsync();
-        }
-        else if (_openedBorrowedConnection && Connection.State != ConnectionState.Closed)
-        {
-            await Connection.CloseAsync();
-        }
-
         _disposed = true;
+        Exception? failure = null;
+        try
+        {
+            if (_activeTransaction is not null) await _activeTransaction.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception error) { failure = error; }
+        try
+        {
+            if (_ownsConnection) await Connection.DisposeAsync().ConfigureAwait(false);
+            else if (_openedBorrowedConnection && Connection.State != ConnectionState.Closed)
+                await Connection.CloseAsync().ConfigureAwait(false);
+        }
+        catch (Exception error) { failure = CleanupErrors.Add(failure, error); }
+        CleanupErrors.ThrowIfAny(failure);
     }
 
-    private void TransactionCompleted(DbTransactionSession transaction)
+    private void TransactionCompleted(DbTransactionSession transaction, bool cleanupFailed)
     {
+        _transactionCleanupFailed |= cleanupFailed;
         if (ReferenceEquals(_activeTransaction, transaction))
         {
             _activeTransaction = null;

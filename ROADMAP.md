@@ -4,6 +4,10 @@ This roadmap organizes the work toward SnapData 1.0 around coherent, useful
 releases. It is a direction rather than a promise: priorities can change as the
 packages are used in real applications.
 
+The [API review and implementation plan](API_PLAN.md) records the current
+working-tree inventory, concrete 0.4 slices, acceptance criteria, and deferred
+API candidates. Use it to distinguish new work from existing foundations.
+
 ## Version policy
 
 - Minor `0.x.0` releases represent meaningful feature or design milestones and
@@ -44,12 +48,38 @@ Release goal: common write patterns work consistently without requiring raw,
 provider-specific SQL.
 
 - Add a provider-independent upsert API.
-- Add bulk insert support.
+  - [x] First slice: explicit conflict keys, selected incoming update columns,
+    and do-nothing actions in SQL and typed entity builders; SQLite/PostgreSQL
+    native compilation, SQLite execution coverage, and explicit rejection on
+    unsupported providers.
+  - [x] Live PostgreSQL contracts: typed insert/update, composite conflict keys,
+    do-nothing, unrelated constraint failures, transaction rollback, and
+    verified lock contention between concurrent writers for update/skip actions.
+  - [ ] Extend provider support with documented concurrency/conflict semantics
+    and live provider contract tests before calling upsert provider-independent.
+    0.4 decision: SQLite/PostgreSQL/SQL Server supported; MySQL/Firebird deferred
+    explicitly. Do not advertise universal provider support.
+  - [x] SQL Server single-row MERGE/HOLDLOCK, selected-column update/skip, and
+    nine live concurrency/failure contracts on both .NET targets.
+- [x] Add mapped batched inserts on top of existing multi-row SQL support;
+  explicit atomic/caller/non-atomic ownership, parameter budgets, and all five
+  provider contracts. Firebird uses single-row fallback; native bulk loading deferred.
 - Improve generated-value and `RETURNING`/`OUTPUT` behavior.
-- Support composite-key CRUD.
+  - [x] Typed mutation result terminals and upsert returning for SQLite,
+    PostgreSQL, and SQL Server; live PostgreSQL/SQL Server result contracts.
+- Extend composite-key CRUD coverage and evaluate key-only convenience APIs;
+  mapped composite-key update/delete already exist.
+- Support default-only inserts and improve typed write ergonomics.
+  - [x] Explicit default-only SQL/typed inserts, generated-only entity inserts,
+    metadata-aware MySQL hydration validation, and live default/identity tests
+    for PostgreSQL, SQL Server, MySQL and Firebird plus SQLite execution tests.
+  - [x] Typed SetExpression and consistent Values(entity) replacement semantics.
 - Define consistent affected-row results.
-- Harden transactions and cancellation.
+- [x] Harden owned session/transaction cleanup and internal batch cancellation
+  failures; document caller-owned disposal and uncertain connection state.
 - Expose provider capability information.
+  - [x] Compiler-level operation flags and unknown limits; session-bound Build
+    now matches execution with an explicit compiler override still available.
 
 ## 0.6.0: mapping and extensibility
 
@@ -58,7 +88,7 @@ ordinary classes and no base model type is required.
 
 - Add query and command interceptors.
 - Evaluate optional lifecycle interfaces for auditing and timestamps.
-- Add configurable naming conventions.
+- Improve existing configurable naming conventions and mapping diagnostics.
 - Add custom value converters.
 - Improve constructor mapping and mapping diagnostics.
 - Expand enum, JSON, and provider-specific type support.
@@ -69,7 +99,8 @@ Release goal: behavior under failure, concurrency, and load is documented and
 proven.
 
 - Integrate structured diagnostics and logging.
-- Add command timing and observability hooks.
+- Add logging/tracing integrations on top of existing command timing and
+  observation hooks.
 - Add explicit retry integration points without hidden automatic retries.
 - Test migration cancellation, timeouts, concurrency, and failure recovery.
 - Test large data sets and provider parameter limits.

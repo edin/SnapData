@@ -63,9 +63,10 @@ public sealed class SnapDatabase
                 _mappingProvider,
                 _commandObserver);
         }
-        catch
+        catch (Exception error)
         {
-            await connection.DisposeAsync();
+            try { await connection.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception cleanup) { CleanupErrors.Add(error, cleanup); }
             throw;
         }
     }

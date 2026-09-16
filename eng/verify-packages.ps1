@@ -25,7 +25,7 @@ foreach ($packageId in $expectedPackages) {
 }
 
 if (Test-Path -LiteralPath $toolRoot) {
-    Remove-Item -LiteralPath $toolRoot -Recurse -Force
+    throw "Tool smoke directory already exists. Choose a fresh -ToolDirectory: $toolRoot"
 }
 New-Item -ItemType Directory -Path $toolRoot | Out-Null
 $escapedPackageRoot = [System.Security.SecurityElement]::Escape($packageRoot)
@@ -36,7 +36,12 @@ $nugetConfig = Join-Path $toolRoot "NuGet.Config"
   <packageSources>
     <clear />
     <add key="local-packages" value="$escapedPackageRoot" />
+    <add key="nuget" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
+  <packageSourceMapping>
+    <packageSource key="local-packages"><package pattern="SnapData" /><package pattern="SnapData.*" /></packageSource>
+    <packageSource key="nuget"><package pattern="*" /></packageSource>
+  </packageSourceMapping>
 </configuration>
 "@ | Set-Content -LiteralPath $nugetConfig -Encoding utf8
 
@@ -135,6 +140,14 @@ try {
     }
 }
 finally {
+    $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    foreach ($cleanupTarget in @($workspace, $sqlWorkspace)) {
+        $resolvedCleanup = [System.IO.Path]::GetFullPath($cleanupTarget)
+        if (-not $resolvedCleanup.StartsWith($temporaryRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not ([System.IO.Path]::GetFileName($resolvedCleanup) -match '^snapdata-(sql-)?package-smoke-[0-9a-f]{32}$')) {
+            throw "Refusing cleanup outside the generated package-smoke directories."
+        }
+    }
     if (Test-Path -LiteralPath $workspace) {
         Remove-Item -LiteralPath $workspace -Recurse -Force
     }
@@ -144,3 +157,4 @@ finally {
 }
 
 Write-Host "Verified all four packages and the packaged SnapData CLI $Version workflow."
+& (Join-Path $PSScriptRoot "verify-api.ps1") -Version $Version -PackageDirectory $packageRoot

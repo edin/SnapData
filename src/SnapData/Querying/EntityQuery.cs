@@ -413,7 +413,8 @@ public sealed class EntityQuery<T> where T : class
         return new PageResult<T>(items, totalCount, pageNumber, pageSize);
     }
 
-    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
+    public SqlQuery Build(IQueryCompiler? compiler = null) =>
+        compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 
     private void SelectMappedColumns(string qualifier)
     {
@@ -596,7 +597,8 @@ public sealed class ProjectedQuery<TResult>
         return new PageResult<TResult>(items, totalCount, pageNumber, pageSize);
     }
 
-    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
+    public SqlQuery Build(IQueryCompiler? compiler = null) =>
+        compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 }
 
 public sealed class PageResult<T>

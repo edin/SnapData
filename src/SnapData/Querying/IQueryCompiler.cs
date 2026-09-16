@@ -2,6 +2,17 @@ namespace SnapData;
 
 public interface IQueryCompiler
 {
+    QueryCapabilities Capabilities => QueryCapabilities.None;
+
+    /// <summary>Plan generated-value hydration with mapping metadata. The column-only overload
+    /// remains available for custom compilers and explicit low-level calls.</summary>
+    GeneratedInsertPlan CompileGeneratedEntityInsert(
+        InsertQueryBuilder insert, IReadOnlyList<PropertyMapping> generatedProperties)
+    {
+        ArgumentNullException.ThrowIfNull(generatedProperties);
+        return CompileGeneratedInsert(insert, generatedProperties.Select(property => property.Column).ToArray());
+    }
+
     GeneratedInsertPlan CompileGeneratedInsert(
         InsertQueryBuilder insert,
         IReadOnlyList<ColumnReference> generatedColumns)

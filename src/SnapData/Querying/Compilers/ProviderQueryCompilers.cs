@@ -4,6 +4,9 @@ namespace SnapData;
 
 public sealed class SqliteQueryCompiler : SqlDialect
 {
+    public override QueryCapabilities Capabilities => base.Capabilities with { Upsert = true, UpsertDoNothing = true, UpsertReturning = true };
+    public override SqlQuery Compile(UpsertQueryBuilder query) => CompileOnConflictUpsert(query);
+
     public static SqliteQueryCompiler Instance { get; } = new();
 
     private SqliteQueryCompiler()
@@ -16,6 +19,9 @@ public sealed class SqliteQueryCompiler : SqlDialect
 
 public sealed class PostgresQueryCompiler : SqlDialect
 {
+    public override QueryCapabilities Capabilities => base.Capabilities with { Upsert = true, UpsertDoNothing = true, UpsertReturning = true };
+    public override SqlQuery Compile(UpsertQueryBuilder query) => CompileOnConflictUpsert(query);
+
     public static PostgresQueryCompiler Instance { get; } = new();
 
     private PostgresQueryCompiler()
@@ -28,6 +34,7 @@ public sealed class PostgresQueryCompiler : SqlDialect
 
 public sealed class FirebirdQueryCompiler : SqlDialect
 {
+    public override QueryCapabilities Capabilities => base.Capabilities with { MultiRowInsert = false, MaxRowsPerInsert = 1 };
     public static FirebirdQueryCompiler Instance { get; } = new();
 
     private FirebirdQueryCompiler()
@@ -55,6 +62,21 @@ public sealed class FirebirdQueryCompiler : SqlDialect
 
 public sealed class MySqlQueryCompiler : SqlDialect
 {
+    protected override string DefaultInsertClause => " () VALUES ()";
+
+    public override GeneratedInsertPlan CompileGeneratedEntityInsert(
+        InsertQueryBuilder insert,
+        IReadOnlyList<PropertyMapping> generatedProperties)
+    {
+        ArgumentNullException.ThrowIfNull(generatedProperties);
+        if (generatedProperties.Count != 1 || generatedProperties[0].Generated !=
+            System.ComponentModel.DataAnnotations.Schema.DatabaseGeneratedOption.Identity)
+        {
+            throw new NotSupportedException("MySQL entity inserts can hydrate exactly one identity column, not computed columns.");
+        }
+        return base.CompileGeneratedEntityInsert(insert, generatedProperties);
+    }
+    public override QueryCapabilities Capabilities => QueryCapabilities.None with { MultiRowInsert = true };
     public static MySqlQueryCompiler Instance { get; } = new();
 
     private MySqlQueryCompiler()
@@ -115,6 +137,9 @@ public sealed class MySqlQueryCompiler : SqlDialect
 
 public sealed class SqlServerQueryCompiler : SqlDialect
 {
+    public override QueryCapabilities Capabilities => base.Capabilities with { Upsert = true, UpsertDoNothing = true, UpsertReturning = true, MaxRowsPerInsert = 1000 };
+    public override SqlQuery Compile(UpsertQueryBuilder query) => CompileSqlServerUpsert(query);
+
     public static SqlServerQueryCompiler Instance { get; } = new();
 
     private SqlServerQueryCompiler()

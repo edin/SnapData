@@ -6,6 +6,14 @@ public abstract class SqlDialect : IQueryCompiler
 {
     public static SqlDialect Ansi { get; } = new AnsiSqlDialect();
 
+    public virtual QueryCapabilities Capabilities { get; } = new()
+    {
+        MultiRowInsert = true,
+        InsertReturning = true,
+        UpdateReturning = true,
+        DeleteReturning = true
+    };
+
     public virtual GeneratedInsertPlan CompileGeneratedInsert(
         InsertQueryBuilder insert,
         IReadOnlyList<ColumnReference> generatedColumns)
@@ -30,11 +38,72 @@ public abstract class SqlDialect : IQueryCompiler
         {
             SelectQueryBuilder select => Compile(select),
             InsertQueryBuilder insert => Compile(insert),
+            UpsertQueryBuilder upsert => Compile(upsert),
             UpdateQueryBuilder update => Compile(update),
             DeleteQueryBuilder delete => Compile(delete),
             _ => throw new NotSupportedException(
                 $"{GetType().Name} cannot compile {query.GetType().Name}.")
         };
+
+    public virtual GeneratedInsertPlan CompileGeneratedEntityInsert(
+        InsertQueryBuilder insert, IReadOnlyList<PropertyMapping> generatedProperties)
+    {
+        ArgumentNullException.ThrowIfNull(generatedProperties);
+        return CompileGeneratedInsert(insert, generatedProperties.Select(property => property.Column).ToArray());
+    }
+
+    public virtual SqlQuery Compile(UpsertQueryBuilder query) =>
+        throw new NotSupportedException($"{GetType().Name} does not support explicit-target upsert.");
+
+    protected SqlQuery CompileOnConflictUpsert(UpsertQueryBuilder query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        query.Validate();
+        var insert = Compile(query.Insert);
+        var sql = new StringBuilder(insert.Text)
+            .Append(" ON CONFLICT (")
+            .Append(string.Join(", ", query.ConflictColumns.Select(column => QuoteIdentifier(column.Name))))
+            .Append(") DO ");
+        if (query.IgnoreConflict)
+            sql.Append("NOTHING");
+        else
+            sql.Append("UPDATE SET ").Append(string.Join(", ", query.UpdatedColumns.Select(column =>
+                $"{QuoteIdentifier(column.Name)} = excluded.{QuoteIdentifier(column.Name)}")));
+        AppendReturning(sql, query.ReturningColumns);
+        return new SqlQuery(sql.ToString(), insert.Parameters);
+    }
+
+    protected SqlQuery CompileSqlServerUpsert(UpsertQueryBuilder query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        query.Validate();
+        var row = query.Insert.RowsValue[0];
+        var context = new CompilationContext(this);
+        string Source(ColumnReference column) => $"[source].{QuoteIdentifier(column.Name)}";
+        string Target(ColumnReference column) => $"[target].{QuoteIdentifier(column.Name)}";
+        var sql = new StringBuilder("MERGE INTO ")
+            .Append(QuoteTable(query.Insert.Table))
+            .Append(" WITH (HOLDLOCK) AS [target] USING (VALUES (")
+            .Append(string.Join(", ", row.Select(pair => context.CompileValue(pair.Value))))
+            .Append(")) AS [source] (")
+            .Append(string.Join(", ", row.Select(pair => QuoteIdentifier(pair.Key.Name))))
+            .Append(") ON ")
+            .Append(string.Join(" AND ", query.ConflictColumns.Select(column =>
+                $"({Target(column)} = {Source(column)} OR ({Target(column)} IS NULL AND {Source(column)} IS NULL))")));
+        if (!query.IgnoreConflict)
+        {
+            sql.Append(" WHEN MATCHED THEN UPDATE SET ")
+                .Append(string.Join(", ", query.UpdatedColumns.Select(column => $"{Target(column)} = {Source(column)}")));
+        }
+        sql.Append(" WHEN NOT MATCHED THEN INSERT (")
+            .Append(string.Join(", ", row.Select(pair => QuoteIdentifier(pair.Key.Name))))
+            .Append(") VALUES (")
+            .Append(string.Join(", ", row.Select(pair => Source(pair.Key))))
+            .Append(')');
+        AppendMutationOutput(sql, query.ReturningColumns, "INSERTED");
+        sql.Append(';');
+        return context.Query(sql);
+    }
 
     public SqlQuery Compile(SelectQueryBuilder query)
     {
@@ -83,7 +152,17 @@ public abstract class SqlDialect : IQueryCompiler
     public SqlQuery Compile(InsertQueryBuilder query)
     {
         ArgumentNullException.ThrowIfNull(query);
+        if (query.UsesDefaultValues)
+        {
+            var defaultSql = new StringBuilder("INSERT INTO ").Append(QuoteTable(query.Table));
+            AppendMutationOutput(defaultSql, query.ReturningColumns, "INSERTED");
+            defaultSql.Append(DefaultInsertClause);
+            AppendReturning(defaultSql, query.ReturningColumns);
+            return new SqlQuery(defaultSql.ToString());
+        }
         var rows = query.RowsValue;
+        if (rows.Count > 1 && (!Capabilities.MultiRowInsert || rows.Count > (Capabilities.MaxRowsPerInsert ?? int.MaxValue)))
+            throw new NotSupportedException("The compiler does not support this number of rows in one INSERT.");
         if (rows.Count == 0)
         {
             throw new InvalidOperationException("An INSERT requires at least one row.");
@@ -150,6 +229,8 @@ public abstract class SqlDialect : IQueryCompiler
     }
 
     protected internal abstract string QuoteIdentifier(string identifier);
+
+    protected virtual string DefaultInsertClause => " DEFAULT VALUES";
 
     protected virtual void AppendSelectModifiers(
         StringBuilder sql,

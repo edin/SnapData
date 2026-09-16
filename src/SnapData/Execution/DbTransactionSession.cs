@@ -5,13 +5,13 @@ namespace SnapData;
 public sealed class DbTransactionSession : DbExecutor, IDisposable, IAsyncDisposable
 {
     private readonly DbTransaction _dbTransaction;
-    private readonly Action<DbTransactionSession> _completed;
+    private readonly Action<DbTransactionSession, bool> _completed;
     private bool _finished;
     private bool _disposed;
 
     internal DbTransactionSession(
         DbTransaction transaction,
-        Action<DbTransactionSession> completed,
+        Action<DbTransactionSession, bool> completed,
         IQueryCompiler queryCompiler,
         IEntityMappingProvider mappingProvider,
         ICommandObserver? commandObserver)
@@ -45,14 +45,14 @@ public sealed class DbTransactionSession : DbExecutor, IDisposable, IAsyncDispos
             return;
         }
 
-        if (!_finished)
-        {
-            _dbTransaction.Rollback();
-            Finish();
-        }
-
-        _dbTransaction.Dispose();
         _disposed = true;
+        Exception? failure = null;
+        try { if (!_finished) _dbTransaction.Rollback(); }
+        catch (Exception error) { failure = error; }
+        try { _dbTransaction.Dispose(); }
+        catch (Exception error) { failure = CleanupErrors.Add(failure, error); }
+        Finish(cleanupFailed: failure is not null);
+        CleanupErrors.ThrowIfAny(failure);
     }
 
     public async ValueTask DisposeAsync()
@@ -62,14 +62,14 @@ public sealed class DbTransactionSession : DbExecutor, IDisposable, IAsyncDispos
             return;
         }
 
-        if (!_finished)
-        {
-            await _dbTransaction.RollbackAsync();
-            Finish();
-        }
-
-        await _dbTransaction.DisposeAsync();
         _disposed = true;
+        Exception? failure = null;
+        try { if (!_finished) await _dbTransaction.RollbackAsync().ConfigureAwait(false); }
+        catch (Exception error) { failure = error; }
+        try { await _dbTransaction.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception error) { failure = CleanupErrors.Add(failure, error); }
+        Finish(cleanupFailed: failure is not null);
+        CleanupErrors.ThrowIfAny(failure);
     }
 
     private void EnsureActive()
@@ -81,14 +81,14 @@ public sealed class DbTransactionSession : DbExecutor, IDisposable, IAsyncDispos
         }
     }
 
-    private void Finish()
+    private void Finish(bool cleanupFailed = false)
     {
-        if (_finished)
+        if (_finished && !cleanupFailed)
         {
             return;
         }
 
         _finished = true;
-        _completed(this);
+        _completed(this, cleanupFailed);
     }
 }

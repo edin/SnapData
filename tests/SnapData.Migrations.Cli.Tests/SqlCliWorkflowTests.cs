@@ -71,10 +71,17 @@ public sealed class SqlCliWorkflowTests : IDisposable
             "--force");
         AssertSuccess(replaced, "script --output --force");
 
+        var unconfirmedMigration = await RunAsync("migrate", "--no-color");
+        Assert.Equal(1, unconfirmedMigration.ExitCode);
+        Assert.Contains("Use --yes", unconfirmedMigration.StandardOutput);
         var migrated = await RunAsync("migrate", "--yes");
         AssertSuccess(migrated, "migrate");
         Assert.Contains("2 migrations applied", migrated.StandardOutput);
         Assert.True(File.Exists(Path.Combine(directory, "Scripts", "app.db")));
+
+        var protectedWhenCurrent = await RunAsync("script", "--output", "deployment.sql");
+        Assert.Equal(1, protectedWhenCurrent.ExitCode);
+        Assert.Equal(deploymentSql, File.ReadAllText(deploymentFile));
 
         var exportedWhenCurrent = await RunAsync(
             "script",
@@ -83,8 +90,15 @@ public sealed class SqlCliWorkflowTests : IDisposable
             "--force");
         AssertSuccess(exportedWhenCurrent, "script --output when current");
         Assert.Contains("Database is up to date", exportedWhenCurrent.StandardOutput);
-        Assert.Equal(deploymentSql, File.ReadAllText(deploymentFile));
+        Assert.Contains("No pending migrations", File.ReadAllText(deploymentFile));
+        Assert.DoesNotContain("CREATE TABLE", File.ReadAllText(deploymentFile));
+        var newEmptyExport = await RunAsync("script", "--output", "empty.sql");
+        AssertSuccess(newEmptyExport, "empty script export to new file");
+        Assert.Contains("No pending migrations", File.ReadAllText(Path.Combine(directory, "empty.sql")));
 
+        var unconfirmedRollback = await RunAsync("rollback", "--no-color");
+        Assert.Equal(1, unconfirmedRollback.ExitCode);
+        Assert.Contains("Use --yes", unconfirmedRollback.StandardOutput);
         var rolledBack = await RunAsync("rollback", "--steps", "2", "--yes");
         AssertSuccess(rolledBack, "rollback");
         Assert.Contains("2 pending migrations", rolledBack.StandardOutput);

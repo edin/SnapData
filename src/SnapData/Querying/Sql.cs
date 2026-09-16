@@ -2,6 +2,10 @@ namespace SnapData;
 
 public static class Sql
 {
+    public static UpsertQueryBuilder UpsertInto(string table) => new(TableReference.Parse(table));
+
+    public static UpsertQueryBuilder UpsertInto(TableReference table) => new(table);
+
     public static AggregateExpression Count(string column = "*") =>
         new(AggregateFunction.Count, ColumnReference.Parse(column));
 

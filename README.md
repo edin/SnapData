@@ -582,7 +582,244 @@ await session.ExecuteAsync(
 `Returning(...)` compiles to the provider-specific mutation result syntax where
 supported, including SQL Server's `OUTPUT` form.
 
+## Upsert (0.4 development)
+
+Upsert inserts one row, or handles a conflict with an explicitly named primary
+key or unique constraint. Choose the columns to copy from the incoming row:
+
+```csharp
+await session.ExecuteAsync(
+    Sql.UpsertInto("users")
+        .Values(new { email = "edin@example.com", name = "Edin", active = true })
+        .OnConflict("email")
+        .UpdateColumns("name", "active"));
+
+await session.UpsertInto<User>()
+    .Values(user)
+    .OnConflict(u => u.Email)
+    .UpdateColumns(u => u.Name, u => u.Active)
+    .ExecuteAsync();
+```
+
+These examples assume `users.email` has a unique constraint and `User.Email`
+maps to that column. Composite targets accept multiple columns or property
+expressions. Use `.DoNothing()` instead of `.UpdateColumns(...)` to leave an
+existing row untouched. Both the conflict target and action are required;
+SnapData never implicitly updates every property. The last action selected
+replaces the previous one.
+
+SQLite and PostgreSQL use a single native `INSERT ... ON CONFLICT` statement.
+SQL Server uses single-row `MERGE ... WITH (HOLDLOCK)` with no delete action;
+it neither starts nor commits a separate transaction. The conflict columns
+must be backed by an ordinary primary key or unique constraint. SQL Server
+uses null-safe key equality to match its unique-constraint semantics. Filtered
+indexes and expression conflict targets are not supported. No preliminary
+existence query is issued. ANSI, MySQL, and Firebird compilers currently throw
+`NotSupportedException` for upsert. Provider semantics follow
+[SQLite UPSERT](https://www.sqlite.org/lang_upsert.html) and
+[PostgreSQL INSERT](https://www.postgresql.org/docs/current/sql-insert.html).
+
+SQL Server locking follows [Microsoft's MERGE guidance](https://learn.microsoft.com/en-us/sql/t-sql/statements/merge-transact-sql#concurrency-considerations-for-merge).
+This path targets ordinary rowstore tables; specialized table features and
+trigger-heavy workloads need application-specific validation. Deadlocks and
+other provider failures are surfaced, not silently retried. Cancellation is
+forwarded to the provider; SqlClient may report server-side cancellation as
+`SqlException` rather than `OperationCanceledException`.
+
+Conflict and update columns must have incoming values. Conflict columns cannot
+be updated. Nullable conflict values retain database uniqueness semantics;
+they are not automatically treated as equal. Other constraint failures remain
+errors, including with `DoNothing()`. Partial/expression conflict targets are
+not supported in this slice.
+
+Typed upserts respect mapped insertable/updatable properties and exclude
+generated properties. `ExecuteAsync()` returns the provider's affected-row
+count, not an inserted-versus-updated classification, and does not hydrate
+generated values back into the entity. Transaction sessions expose the same
+API; query options and cancellation tokens pass through normal execution.
+Bulk upserts and automatic generated-value hydration for upsert are deferred.
+
+The 0.4 support decision is to keep MySQL/Firebird explicit-target upsert
+unsupported, not silently weaken `OnConflict` or selected-update semantics.
+See [the provider decision](API_PLAN.md#provider-support-decision-for-04) for the
+rationale and requirements before extending support.
+
+### Mapped batch inserts (0.4 development)
+
+```csharp
+var result = await session.InsertManyAsync(users,
+    new InsertManyOptions { BatchSize = 100, MaxParametersPerCommand = 500 },
+    new QueryOptions { CommandTimeout = 30 }, cancellationToken);
+```
+
+`InsertManyAsync<T>` uses the mapping for `T`, snapshots insertable values, and
+consumes input once in bounded batches. Identity/computed properties are excluded;
+input entities are not hydrated. Empty input returns zero counts without opening
+a connection. Generated-only entities use one default insert per input item.
+
+The defaults are 100 rows and 500 parameters per statement, further reduced by
+advertised compiler limits. These are budgets, not live server discovery: lower
+them for a more restrictive server/connection. SQL Server caps VALUES inserts at
+1,000 rows; Firebird uses single-row inserts. Unsupported standalone Firebird
+multi-row VALUES inserts now fail during compilation.
+
+`Atomic = true` owns and commits a transaction when called on a session. Database,
+enumeration, or cancellation failures roll back owned work. Inside an existing
+transaction, the caller retains commit/rollback responsibility; no savepoint is
+created. Explicit `Atomic = false` on a session allows completed batches to remain
+after a later failure. Errors propagate without a partial-result object. Enumeration
+must not execute other commands on the same session while its owned transaction
+is active. Transactional behavior also depends on the provider/table engine.
+
+Successful calls return `RowsSubmitted` (input rows sent), `StatementsExecuted`
+(insert commands), and `AffectedRows` (sum of provider counts, or null if any count
+was unknown). Affected rows are not a portable insert/update classification.
+Timeouts, cancellation, and command observers use the existing execution path.
+This is batched INSERT, not provider-native bulk loading or bulk upsert.
+
+### Default-only inserts and typed assignments (0.4 development)
+
+```csharp
+await session.ExecuteAsync(Sql.InsertInto("audit_entries").DefaultValues());
+var id = await session.InsertInto<AuditEntry>()
+    .DefaultValues().Returning<long>(entry => entry.Id).SingleAsync();
+```
+
+`DefaultValues()` inserts one row without supplying columns. It cannot be mixed
+with `Values()`, `Value()`, or `Rows()`. Entities with no insertable properties
+also use this path through `InsertAsync(entity)` or typed `.Values(entity)`.
+SQLite, PostgreSQL, SQL Server and Firebird use `DEFAULT VALUES`; MySQL uses
+the empty column/value-list form. Required fields without defaults still fail
+according to the database's rules. Explicit null remains null; it is never
+silently converted to an omitted/defaulted column. A portable per-column SQL
+`DEFAULT` expression is not added in this slice.
+
+`InsertAsync(entity)` hydrates supported generated properties. MySQL entity
+hydration accepts exactly one identity property, rejecting computed properties
+before writing. `CompileGeneratedEntityInsert` supplies this mapping metadata
+to compilers and bridges to the existing column-only hook for custom compilers.
+The low-level column-only hook remains the caller's responsibility.
+
+Generated values returned or assigned before a transaction rollback are not
+reset in application objects. For updated computed columns, select them with
+typed `Returning<TResult>(...)`; `UpdateAsync(entity)` does not silently refresh
+the input entity. Typed insert `Values(entity)` now replaces previously supplied
+values, matching the low-level builder; duplicate individual `Value()` calls
+still fail.
+
+Typed updates can assign existing SQL expressions without client-side reads:
+
+```csharp
+var account = session.Entity<Account>();
+await session.Update<Account>()
+    .SetExpression(a => a.Balance, account.Col(a => a.Balance) + amount)
+    .Where(a => a.Id == accountId)
+    .ExecuteAsync();
+```
+
+`SetExpression` preserves mapped key/generated-column and whole-table guards.
+The selected property is typed, but SQL expression value/type compatibility
+remains the caller's responsibility and is ultimately checked by the database.
+
+### Typed mutation results (0.4 development)
+
+Insert, update, delete, and upsert wrappers expose selected returned properties:
+
+```csharp
+var id = await session.InsertInto<User>()
+    .Values(user)
+    .Returning<long>(u => u.Id)
+    .SingleAsync();
+
+var optionalId = await session.UpsertInto<User>()
+    .Values(user)
+    .OnConflict(u => u.Email)
+    .DoNothing()
+    .Returning<long?>(u => u.Id)
+    .SingleOrDefaultAsync();
+```
+
+`MutationResult<TResult>` offers `ToListAsync()`, `SingleAsync()`,
+`SingleOrDefaultAsync()`, and provider-bound `Build()`. Scalar selections should
+select one column; DTO properties/constructor parameters follow normal column
+mapping. Returned partial DTOs are not fully populated entities. Input entities
+are not hydrated by these terminal methods.
+
+Each terminal call executes the write again; results are not cached. Builders
+are mutable, so finish configuration before requesting/executing results.
+`SingleOrDefaultAsync()` returns `default(TResult)` for zero rows; use a nullable
+scalar type to distinguish no row from zero. `SingleAsync()` buffers returned
+rows and requires exactly one. A cardinality/mapping failure happens after the
+write: use a caller-owned transaction and roll it back if that should undo the
+operation. No implicit rollback or retry is performed.
+
+SQLite, PostgreSQL and SQL Server support upsert returning. SQL Server emits
+`OUTPUT INSERTED...`; table/trigger restrictions of direct OUTPUT apply. MySQL
+returning is rejected during compilation, before executing a write. Query
+options, cancellation, and command-observer events use the normal execution
+pipeline. Low-level upsert also supports `.Returning("id", ...)` for use with
+executor query methods.
+
+The PostgreSQL upsert integration tests cover real lock contention between two
+writers, along with insert/update/skip, composite targets, constraint failures,
+and rollback. With `SNAPDATA_POSTGRES_CONNECTION` pointing to a test database,
+run them using:
+
+```bash
+dotnet test tests/SnapData.IntegrationTests --filter FullyQualifiedName~PostgresUpsertTests
+```
+
+The test database user needs permission to create schemas. Each test uses a
+uniquely named schema and removes it afterward; these tests skip when the
+connection variable is not set.
+
+SQL Server contracts run with `SNAPDATA_SQLSERVER_CONNECTION` and filter
+`FullyQualifiedName~SqlServerUpsertTests`. They create uniquely named tables in
+`dbo` and remove them afterward. The concurrency tests need visibility of
+blocking sessions through `sys.dm_exec_requests` (appropriate server-state
+permissions for the server version). Use a dedicated test database.
+
 ## Raw SQL
+
+### Provider-bound inspection and capabilities (0.4 development)
+
+The current working-tree support is:
+
+| Operation | SQLite | PostgreSQL | SQL Server | MySQL | Firebird |
+| --- | --- | --- | --- | --- | --- |
+| Explicit-target upsert: update / do nothing | Yes | Yes | Yes | Unsupported | Unsupported |
+| Typed insert/update/delete returning | RETURNING | RETURNING | OUTPUT | Unsupported | RETURNING |
+| Upsert returning | RETURNING | RETURNING | OUTPUT | Unsupported | Unsupported |
+| Default-only insert | Yes | Yes | Yes | Yes | Yes |
+| Mapped batch insert | Multi-row | Multi-row | Multi-row, max 1,000 rows | Multi-row | Single-row fallback |
+| Entity insert identity hydration | Yes | Yes | Yes | One identity | Yes |
+| Entity insert computed-value hydration | Yes | Yes | Yes | Rejected | Yes |
+
+These are compiler/API capabilities, not guarantees for every server version or
+table configuration. Returning rows and triggers have provider restrictions;
+for example SQL Server direct OUTPUT has trigger limitations and older Firebird
+DSQL returning behavior is singleton-oriented. Firebird 4 can return one row of
+nulls when an UPDATE affects no rows, and rejects multi-row UPDATE returning;
+SnapData does not normalize those rows into a portable affected-row result.
+See the [Firebird 4 RETURNING contract](https://www.firebirdsql.org/file/documentation/chunk/en/refdocs/fblangref40/fblangref40-dml-update.html#fblangref40-dml-update-returning)
+and [SQL Server OUTPUT restrictions](https://learn.microsoft.com/en-us/sql/t-sql/queries/output-clause-transact-sql?view=sql-server-ver17).
+Unsupported operations fail
+explicitly. Returning creates result values; batches/upserts do not automatically
+hydrate input entities. Use the tested provider contracts and your target server
+version when qualifying an application for release.
+
+`session.Compile(builder)` and parameterless `Build()` on session/transaction
+wrappers use the configured compiler without opening a connection. Pass a
+compiler explicitly to `Build(compiler)` to override it. Standalone SQL
+builders retain their ANSI default.
+
+`session.Capabilities` and `IQueryCompiler.Capabilities` describe compiler
+support for upsert, per-operation returning, and multi-row inserts. These are not live server
+probes: versions, permissions, constraints, and table features still matter.
+Null parameter/row limits mean unknown, not unlimited. Custom compilers default
+to advertising no capabilities. Custom `IDbExecutor` implementations should
+implement `Compile` for provider-bound inspection; the default throws rather
+than silently selecting a different dialect.
 
 Raw SQL remains a first-class path:
 
@@ -657,6 +894,21 @@ await transaction.CommitAsync();
 Call `RollbackAsync()` explicitly when needed. An uncommitted transaction rolls
 back when disposed. While a session has an active transaction, commands must be
 executed through the transaction object.
+
+Disposal attempts all owned cleanup even if rollback fails; a session whose
+transaction cleanup failed rejects further execution because the connection
+state is uncertain. Dispose that session and discard/reset the connection
+according to its provider (a borrowed, already-open connection remains owned by
+the caller). The first cleanup error is rethrown with later errors attached as
+`IReadOnlyList<Exception>` in `exception.Data["SnapData.CleanupExceptions"]`;
+attached errors can themselves contain cleanup errors.
+
+`InsertManyAsync` and session opening preserve their original operation exception
+when internal cleanup also fails. This cannot preserve an arbitrary exception
+from application code automatically: C# `using`/`await using` can replace a body
+exception if disposal throws. Applications needing both should explicitly catch
+the operation and cleanup failures. A cleanup failure after a successful commit
+does not mean the committed writes were rolled back; do not retry blindly.
 
 ## Stored procedures
 

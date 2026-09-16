@@ -20,11 +20,22 @@ public sealed class EntityInsert<T> where T : class
     public EntityInsert<T> Values(T entity)
     {
         ArgumentNullException.ThrowIfNull(entity);
-        foreach (var property in _mapping.InsertableProperties)
+        if (_mapping.InsertableProperties.Count == 0)
         {
-            _query.Value(property.Column, property.GetValue(entity));
+            _query.DefaultValues();
+        }
+        else
+        {
+            _query.Values(_mapping.InsertableProperties.ToDictionary(
+                property => property.ColumnName, property => property.GetValue(entity)));
         }
 
+        return this;
+    }
+
+    public EntityInsert<T> DefaultValues()
+    {
+        _query.DefaultValues();
         return this;
     }
 
@@ -43,7 +54,15 @@ public sealed class EntityInsert<T> where T : class
         CancellationToken cancellationToken = default) =>
         _executor.ExecuteAsync(_query, options, cancellationToken);
 
-    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
+    public MutationResult<TResult> Returning<TResult>(params Expression<Func<T, object?>>[] properties)
+    {
+        var columns = MutationReturning.Columns(_translator, properties);
+        _query.Returning(columns[0], columns.Skip(1).ToArray());
+        return new(_executor, _query);
+    }
+
+    public SqlQuery Build(IQueryCompiler? compiler = null) =>
+        compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 
     private static void EnsureAllowed(
         ColumnReference column,
@@ -81,6 +100,25 @@ public sealed class EntityUpdate<T> where T : class
         TValue value)
     {
         var column = _translator.TranslateProperty(property);
+        EnsureUpdatable(column);
+        _query.Set(column, value);
+        return this;
+    }
+
+    /// <summary>Assign a SQL expression without evaluating it in application code.</summary>
+    public EntityUpdate<T> SetExpression<TValue>(
+        Expression<Func<T, TValue>> property,
+        ValueExpression value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var column = _translator.TranslateProperty(property);
+        EnsureUpdatable(column);
+        _query.Set(column, value);
+        return this;
+    }
+
+    private void EnsureUpdatable(ColumnReference column)
+    {
         if (!_mapping.UpdatableProperties.Any(candidate => string.Equals(
             candidate.ColumnName,
             column.Name,
@@ -88,9 +126,6 @@ public sealed class EntityUpdate<T> where T : class
         {
             throw new InvalidOperationException($"Column '{column.Name}' is not updatable.");
         }
-
-        _query.Set(column, value);
-        return this;
     }
 
     public EntityUpdate<T> Where(Expression<Func<T, bool>> predicate)
@@ -117,12 +152,20 @@ public sealed class EntityUpdate<T> where T : class
         return this;
     }
 
+    public MutationResult<TResult> Returning<TResult>(params Expression<Func<T, object?>>[] properties)
+    {
+        var columns = MutationReturning.Columns(_translator, properties);
+        _query.Returning(columns[0], columns.Skip(1).ToArray());
+        return new(_executor, _query);
+    }
+
     public Task<int> ExecuteAsync(
         QueryOptions? options = null,
         CancellationToken cancellationToken = default) =>
         _executor.ExecuteAsync(_query, options, cancellationToken);
 
-    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
+    public SqlQuery Build(IQueryCompiler? compiler = null) =>
+        compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 }
 
 public sealed class EntityDelete<T> where T : class
@@ -162,10 +205,18 @@ public sealed class EntityDelete<T> where T : class
         return this;
     }
 
+    public MutationResult<TResult> Returning<TResult>(params Expression<Func<T, object?>>[] properties)
+    {
+        var columns = MutationReturning.Columns(_translator, properties);
+        _query.Returning(columns[0], columns.Skip(1).ToArray());
+        return new(_executor, _query);
+    }
+
     public Task<int> ExecuteAsync(
         QueryOptions? options = null,
         CancellationToken cancellationToken = default) =>
         _executor.ExecuteAsync(_query, options, cancellationToken);
 
-    public SqlQuery Build(IQueryCompiler? compiler = null) => _query.Build(compiler);
+    public SqlQuery Build(IQueryCompiler? compiler = null) =>
+        compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 }

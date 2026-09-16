@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <IsPackable>false</IsPackable>
+    <SnapDataPackageVersion Condition="'$(SnapDataPackageVersion)' == ''">0.2.0</SnapDataPackageVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SnapData" Version="$(SnapDataPackageVersion)" />
+    <PackageReference Include="SnapData.Schema" Version="$(SnapDataPackageVersion)" />
+    <PackageReference Include="SnapData.Migrations" Version="$(SnapDataPackageVersion)" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+  </ItemGroup>
+</Project>

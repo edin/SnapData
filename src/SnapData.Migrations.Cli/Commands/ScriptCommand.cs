@@ -57,6 +57,12 @@ internal sealed class ScriptCommand : AsyncCommand<ScriptCommand.Settings>
             if (preflight.PendingMigrations.Count == 0)
             {
                 output.WriteMigrationStatus(source, preflight.Status);
+                if (settings.OutputFile is not null)
+                {
+                    var emptyOutputFile = Path.GetFullPath(settings.OutputFile, Environment.CurrentDirectory);
+                    new MigrationScriptFileWriter().Write(emptyOutputFile, [], settings.Force);
+                    output.WriteScriptWritten(emptyOutputFile, []);
+                }
                 return 0;
             }
 

@@ -143,6 +143,12 @@ snapdata rollback --yes
 - `script` previews highlighted SQL for pending migrations without applying it.
   `--output <file>` writes the same pending migrations as plain UTF-8 SQL for
   review or deployment. Existing files are protected unless `--force` is used.
+  With no pending migrations, export writes an explicit no-op file; `--force`
+  replaces stale SQL rather than silently leaving an old deployment in place.
+  The file contains raw SQL only: running it does **not** update SnapData's
+  migration history or acquire its lock. Coordinate execution and reconcile
+  history before using `migrate` again, or those migrations will still be pending.
+  Prefer `migrate` when SnapData should manage execution and history together.
 - `migrate` validates history, confirms the plan, acquires the configured lock,
   and applies pending migrations.
 - `rollback` is an explicitly destructive, development-oriented command. It
@@ -154,7 +160,8 @@ environments.
 
 `--no-color` is available on every command. Color is also disabled automatically
 when output is redirected or the standard `NO_COLOR` environment variable is
-present.
+present. Disabling color does not disable confirmation prompts on an interactive
+terminal; redirected input/output still requires `--yes` for unattended execution.
 
 ## Locking
 

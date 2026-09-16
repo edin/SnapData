@@ -5,7 +5,7 @@ using System.Reflection;
 
 namespace SnapData;
 
-public abstract class DbExecutor : IDbExecutor
+public abstract partial class DbExecutor : IDbExecutor
 {
     private static readonly MethodInfo ReadProcedureResultSetMethod = typeof(DbExecutor)
         .GetMethod(nameof(ReadProcedureResultSetAsync), BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -40,6 +40,14 @@ public abstract class DbExecutor : IDbExecutor
     protected IEntityMappingProvider MappingProvider => _mappingProvider;
 
     protected ICommandObserver? CommandObserver => _commandObserver;
+
+    public QueryCapabilities Capabilities => _queryCompiler.Capabilities;
+
+    public SqlQuery Compile(ISqlQueryBuilder query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        return _queryCompiler.Compile(query);
+    }
 
     protected virtual void EnsureCanExecute()
     {
@@ -76,6 +84,9 @@ public abstract class DbExecutor : IDbExecutor
     public SourceQuery From(TableReference source) => new(this, Sql.From(source));
 
     public EntityInsert<T> InsertInto<T>() where T : class =>
+        new(this, _mappingProvider.GetMapping<T>());
+
+    public EntityUpsert<T> UpsertInto<T>() where T : class =>
         new(this, _mappingProvider.GetMapping<T>());
 
     public EntityUpdate<T> Update<T>() where T : class =>
@@ -198,9 +209,7 @@ public abstract class DbExecutor : IDbExecutor
             return await ExecuteAsync(insert, options, cancellationToken);
         }
 
-        var plan = _queryCompiler.CompileGeneratedInsert(
-            insert,
-            generated.Select(property => property.Column).ToArray());
+        var plan = _queryCompiler.CompileGeneratedEntityInsert(insert, generated);
         if (plan.FollowUpQuery is not null)
         {
             var affected = await ExecuteAsync(plan.Command, options, cancellationToken);

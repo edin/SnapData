@@ -2,6 +2,12 @@ namespace SnapData;
 
 public interface IDbExecutor
 {
+    QueryCapabilities Capabilities => QueryCapabilities.None;
+
+    /// <summary>Compile for this executor without opening a connection or executing SQL.</summary>
+    SqlQuery Compile(ISqlQueryBuilder query) =>
+        throw new NotSupportedException("This custom executor does not expose provider-bound compilation. Supply an explicit compiler to Build().");
+
     EntityReference<T> Entity<T>(string? alias = null) where T : class;
 
     EntityQuery<T> From<T>() where T : class;
@@ -17,6 +23,9 @@ public interface IDbExecutor
     SourceQuery From(TableReference source);
 
     EntityInsert<T> InsertInto<T>() where T : class;
+
+    EntityUpsert<T> UpsertInto<T>() where T : class =>
+        throw new NotSupportedException("This custom executor does not implement typed upserts.");
 
     EntityUpdate<T> Update<T>() where T : class;
 
@@ -37,6 +46,13 @@ public interface IDbExecutor
         QueryOptions? options = null,
         CancellationToken cancellationToken = default)
         where T : class;
+
+    Task<InsertManyResult> InsertManyAsync<T>(
+        IEnumerable<T> entities,
+        InsertManyOptions? options = null,
+        QueryOptions? queryOptions = null,
+        CancellationToken cancellationToken = default) where T : class =>
+        throw new NotSupportedException("This custom executor does not implement mapped batched inserts.");
 
     Task<int> UpdateAsync<T>(
         T entity,

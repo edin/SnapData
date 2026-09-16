@@ -16,6 +16,16 @@ public sealed class InsertQueryBuilder : ISqlQueryBuilder
     internal IReadOnlyList<IReadOnlyList<KeyValuePair<ColumnReference, object?>>> RowsValue =>
         _rows.Count == 0 && _values.Count > 0 ? [_values] : _rows;
     internal IReadOnlyList<ColumnReference> ReturningColumns => _returning;
+    internal bool UsesDefaultValues { get; private set; }
+
+    /// <summary>Insert one row using database defaults, with no supplied columns.</summary>
+    public InsertQueryBuilder DefaultValues()
+    {
+        if (_values.Count > 0 || _rows.Count > 0)
+            throw new InvalidOperationException("DefaultValues() cannot be combined with supplied values or rows.");
+        UsesDefaultValues = true;
+        return this;
+    }
 
     public InsertQueryBuilder Values(object values)
     {
@@ -45,6 +55,7 @@ public sealed class InsertQueryBuilder : ISqlQueryBuilder
     public InsertQueryBuilder Rows(params object[] rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
+        EnsureDefaultsNotStarted();
         if (_values.Count > 0)
         {
             throw new InvalidOperationException("Rows() cannot be combined with Values() or Value().");
@@ -78,10 +89,17 @@ public sealed class InsertQueryBuilder : ISqlQueryBuilder
 
     private void EnsureRowsNotStarted()
     {
+        EnsureDefaultsNotStarted();
         if (_rows.Count > 0)
         {
             throw new InvalidOperationException("Values() and Value() cannot be combined with Rows().");
         }
+    }
+
+    private void EnsureDefaultsNotStarted()
+    {
+        if (UsesDefaultValues)
+            throw new InvalidOperationException("DefaultValues() cannot be combined with supplied values or rows.");
     }
 
     private static IReadOnlyList<KeyValuePair<ColumnReference, object?>> ReadValues(object values)

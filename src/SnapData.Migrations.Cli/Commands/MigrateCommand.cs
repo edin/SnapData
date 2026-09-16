@@ -60,7 +60,7 @@ internal sealed class MigrateCommand : AsyncCommand<MigrateCommand.Settings>
             output.WriteMigrationPlan(source, preflight.PendingMigrations);
             if (!settings.Yes)
             {
-                if (Console.IsInputRedirected)
+                if (Console.IsInputRedirected || !console.Profile.Capabilities.Interactive)
                 {
                     output.WriteError(
                         "Interactive confirmation is unavailable. Use --yes to apply pending migrations.");

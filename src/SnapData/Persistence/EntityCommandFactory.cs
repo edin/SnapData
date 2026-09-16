@@ -18,8 +18,7 @@ public sealed class EntityCommandFactory : IEntityCommandFactory
         var mapping = GetMapping(entity);
         if (mapping.InsertableProperties.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"Entity {mapping.EntityType.Name} has no insertable properties.");
+            return Sql.InsertInto(mapping.Table).DefaultValues();
         }
 
         var builder = Sql.InsertInto(mapping.Table);
