@@ -6,6 +6,7 @@ namespace SnapData;
 public sealed record QueryCapabilities
 {
     public static QueryCapabilities None { get; } = new();
+    public bool ForUpdate { get; init; }
     public bool Upsert { get; init; }
     public bool UpsertDoNothing { get; init; }
     public bool InsertReturning { get; init; }

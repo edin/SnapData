@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Numerics;
 
 namespace SnapData;
 
@@ -116,6 +117,15 @@ public sealed class EntityUpdate<T> where T : class
         _query.Set(column, value);
         return this;
     }
+
+    /// <summary>Atomically add one to a mapped numeric column in the database.</summary>
+    public EntityUpdate<T> Increment<TNumber>(Expression<Func<T, TNumber>> property)
+        where TNumber : INumber<TNumber> => Increment(property, TNumber.One);
+
+    /// <summary>Atomically add a parameterized amount to a mapped numeric column.</summary>
+    public EntityUpdate<T> Increment<TNumber>(Expression<Func<T, TNumber>> property, TNumber amount)
+        where TNumber : INumber<TNumber> =>
+        SetExpression(property, Exp.Col(_translator.TranslateProperty(property)) + amount);
 
     private void EnsureUpdatable(ColumnReference column)
     {

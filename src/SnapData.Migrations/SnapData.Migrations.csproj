@@ -6,7 +6,7 @@
     <Title>SnapData.Migrations</Title>
     <Authors>Edin</Authors>
     <Copyright>Copyright © 2026 Edin</Copyright>
-    <Version>0.2.0</Version>
+    <Version>0.4.0</Version>
     <Description>Database migrations for SnapData.</Description>
     <PackageTags>database;migrations;schema;snapdata</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -28,7 +28,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
     <ProjectReference Include="..\SnapData\SnapData.csproj" />
     <ProjectReference Include="..\SnapData.Schema\SnapData.Schema.csproj" />
   </ItemGroup>

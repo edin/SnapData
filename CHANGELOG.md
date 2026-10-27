@@ -2,7 +2,19 @@
 
 Notable changes to SnapData are documented here.
 
-## Unreleased - 0.4 development
+## 0.4.0 - 2026-10-27
+
+- Use the SDK's built-in SourceLink and pin patched PKCS dependencies for the
+  migration CLI and provider integration tests.
+- Serialize shared-catalog provider test classes to avoid schema-inspection and
+  DDL races; explicit concurrency contracts still execute parallel operations.
+
+- Added `ForUpdate` on SQL, source, typed entity and projected queries for
+  MySQL/PostgreSQL, with compiler capabilities and explicit rejection of
+  unsupported providers and aggregate/count queries. Terminal query clones
+  preserve row locks; callers execute through an explicit transaction.
+- Added typed numeric `Increment` with mapped columns, parameterized amounts
+  and existing key/generated-property and predicate guards.
 
 - Hardened session/transaction cleanup after rollback or disposal failure;
   secondary errors remain inspectable, failed cleanup prevents session reuse,
@@ -35,7 +47,7 @@ Notable changes to SnapData are documented here.
   session and transaction APIs without opening database connections.
 - Added typed mutation returning with scalar/DTO list, single, and optional
   single terminals; upsert supports RETURNING/OUTPUT on the three providers.
-- These features are not yet published. MySQL/Firebird explicit-target upsert
+- MySQL/Firebird explicit-target upsert
   and automatic upsert generated-value hydration remain unsupported.
 
 ## 0.2.0 - 2026-08-26

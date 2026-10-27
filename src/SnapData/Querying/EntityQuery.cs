@@ -413,6 +413,13 @@ public sealed class EntityQuery<T> where T : class
         return new PageResult<T>(items, totalCount, pageNumber, pageSize);
     }
 
+    /// <summary>Lock selected rows in the caller's explicit transaction.</summary>
+    public EntityQuery<T> ForUpdate(bool enabled = true)
+    {
+        _query.ForUpdate(enabled);
+        return this;
+    }
+
     public SqlQuery Build(IQueryCompiler? compiler = null) =>
         compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 
@@ -595,6 +602,13 @@ public sealed class ProjectedQuery<TResult>
             options,
             cancellationToken);
         return new PageResult<TResult>(items, totalCount, pageNumber, pageSize);
+    }
+
+    /// <summary>Lock selected rows in the caller's explicit transaction.</summary>
+    public ProjectedQuery<TResult> ForUpdate(bool enabled = true)
+    {
+        _query.ForUpdate(enabled);
+        return this;
     }
 
     public SqlQuery Build(IQueryCompiler? compiler = null) =>

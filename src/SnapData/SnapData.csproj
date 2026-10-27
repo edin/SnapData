@@ -6,7 +6,7 @@
     <Title>SnapData</Title>
     <Authors>Edin</Authors>
     <Copyright>Copyright © 2026 Edin</Copyright>
-    <Version>0.2.0</Version>
+    <Version>0.4.0</Version>
     <Description>Lightweight, explicit data access and query building for .NET.</Description>
     <PackageTags>orm;database;sql;data-access;micro-orm;ado-net</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -27,8 +27,5 @@
     <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
-  </ItemGroup>
 
 </Project>

@@ -60,6 +60,13 @@ public sealed class SourceQuery
         return new ProjectedQuery<TResult>(_executor, _query);
     }
 
+    /// <summary>Lock selected rows in the caller's explicit transaction.</summary>
+    public SourceQuery ForUpdate(bool enabled = true)
+    {
+        _query.ForUpdate(enabled);
+        return this;
+    }
+
     public SqlQuery Build(IQueryCompiler? compiler = null) =>
         compiler is null ? _executor.Compile(_query) : _query.Build(compiler);
 }

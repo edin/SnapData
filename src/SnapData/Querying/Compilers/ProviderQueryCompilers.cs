@@ -19,7 +19,7 @@ public sealed class SqliteQueryCompiler : SqlDialect
 
 public sealed class PostgresQueryCompiler : SqlDialect
 {
-    public override QueryCapabilities Capabilities => base.Capabilities with { Upsert = true, UpsertDoNothing = true, UpsertReturning = true };
+    public override QueryCapabilities Capabilities => base.Capabilities with { ForUpdate = true, Upsert = true, UpsertDoNothing = true, UpsertReturning = true };
     public override SqlQuery Compile(UpsertQueryBuilder query) => CompileOnConflictUpsert(query);
 
     public static PostgresQueryCompiler Instance { get; } = new();
@@ -76,7 +76,7 @@ public sealed class MySqlQueryCompiler : SqlDialect
         }
         return base.CompileGeneratedEntityInsert(insert, generatedProperties);
     }
-    public override QueryCapabilities Capabilities => QueryCapabilities.None with { MultiRowInsert = true };
+    public override QueryCapabilities Capabilities => QueryCapabilities.None with { MultiRowInsert = true, ForUpdate = true };
     public static MySqlQueryCompiler Instance { get; } = new();
 
     private MySqlQueryCompiler()

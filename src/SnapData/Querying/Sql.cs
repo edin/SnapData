@@ -98,6 +98,7 @@ public sealed class SelectQueryBuilder : ISqlQueryBuilder
     private int? _limit;
     private int? _offset;
     private bool _distinct;
+    private bool _forUpdate;
 
     internal SelectQueryBuilder(IEnumerable<ISelectExpression> columns)
     {
@@ -295,6 +296,14 @@ public sealed class SelectQueryBuilder : ISqlQueryBuilder
         return this;
     }
 
+    /// <summary>Lock selected rows until the caller's transaction completes.</summary>
+    /// <remarks>Supported by MySQL and PostgreSQL. Execute through an explicit transaction.</remarks>
+    public SelectQueryBuilder ForUpdate(bool enabled = true)
+    {
+        _forUpdate = enabled;
+        return this;
+    }
+
     public SelectQueryBuilder Offset(int offset)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
@@ -307,6 +316,7 @@ public sealed class SelectQueryBuilder : ISqlQueryBuilder
 
     internal IReadOnlyList<ISelectExpression> Columns => _columns;
     internal bool IsDistinct => _distinct;
+    internal bool IsForUpdate => _forUpdate;
     internal IReadOnlyList<ColumnReference> Groups => _groups;
     internal IReadOnlyList<PredicateExpression> HavingPredicates => _having;
     internal IReadOnlyList<PredicateExpression> Predicates => _predicates;
@@ -322,6 +332,7 @@ public sealed class SelectQueryBuilder : ISqlQueryBuilder
         {
             _table = _table,
             _distinct = _distinct,
+            _forUpdate = _forUpdate,
             _limit = maximumRows is null
                 ? _limit
                 : Math.Min(_limit ?? maximumRows.Value, maximumRows.Value),
@@ -356,9 +367,16 @@ public sealed class SelectQueryBuilder : ISqlQueryBuilder
     }
 }
 
-internal sealed class CountQueryBuilder(SelectQueryBuilder query) : ISqlQueryBuilder
+internal sealed class CountQueryBuilder : ISqlQueryBuilder
 {
-    internal SelectQueryBuilder Query { get; } = query;
+    internal SelectQueryBuilder Query { get; }
+
+    internal CountQueryBuilder(SelectQueryBuilder query)
+    {
+        if (query.IsForUpdate)
+            throw new NotSupportedException("FOR UPDATE cannot be combined with CountAsync, AnyAsync or PageAsync. Use a row-returning terminal inside a transaction.");
+        Query = query;
+    }
 
     public SqlQuery Build(IQueryCompiler? compiler = null)
     {

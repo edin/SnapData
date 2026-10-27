@@ -116,6 +116,13 @@ public abstract class SqlDialect : IQueryCompiler
         SelectQueryBuilder query,
         CompilationContext context)
     {
+        if (query.IsForUpdate)
+        {
+            if (!Capabilities.ForUpdate)
+                throw new NotSupportedException($"{GetType().Name} does not support FOR UPDATE.");
+            if (query.IsDistinct || query.Groups.Count > 0 || query.HavingPredicates.Count > 0 || query.Columns.Any(c => c is AggregateExpression))
+                throw new NotSupportedException("FOR UPDATE requires a row-returning SELECT without DISTINCT, grouping or aggregates.");
+        }
         var sql = new StringBuilder("SELECT ");
         AppendSelectModifiers(sql, query);
 
@@ -146,6 +153,7 @@ public abstract class SqlDialect : IQueryCompiler
         }
 
         AppendLimit(sql, query);
+        if (query.IsForUpdate) sql.Append(" FOR UPDATE");
         return sql;
     }
 

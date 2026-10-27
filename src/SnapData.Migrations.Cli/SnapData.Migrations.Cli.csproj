@@ -11,7 +11,7 @@
     <Title>SnapData Migrations CLI</Title>
     <Authors>Edin</Authors>
     <Copyright>Copyright © 2026 Edin</Copyright>
-    <Version>0.2.0</Version>
+    <Version>0.4.0</Version>
     <Description>Command-line tools for SnapData migrations.</Description>
     <PackageTags>database;migrations;cli;snapdata</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -28,6 +28,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Pin patched transitive SqlClient dependencies for each supported target. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="8.0.2" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" Condition="'$(TargetFramework)' == 'net10.0'" />
     <PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="10.3.4" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Ini" Version="10.0.10" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0"

@@ -496,6 +496,51 @@ PageResult<User> page = await session
 `TotalPages`, `HasPreviousPage`, and `HasNextPage`. Pagination clones the query,
 so the original builder remains reusable.
 
+## Row locking and atomic increments (0.4.0)
+
+MySQL and PostgreSQL queries can lock selected rows through `ForUpdate()` on
+SQL, source, entity and projected builders. Execute the query through an explicit
+transaction; the database releases locks when that transaction commits or rolls
+back. Locks are retained by first/single terminal query clones and projections.
+Other built-in compilers throw `NotSupportedException`; check
+`session.Capabilities.ForUpdate` when selecting a provider-dependent workflow.
+
+```csharp
+await using var transaction = await session.BeginTransactionAsync();
+var user = await transaction.From<User>()
+    .Where(user => user.Id == userId)
+    .ForUpdate()
+    .SingleOrDefaultAsync();
+// Read and modify protected state through this transaction.
+await transaction.CommitAsync();
+```
+
+`ForUpdate(false)` disables locking on a builder. Locking is rejected for
+`DISTINCT`, grouped/aggregate selections, and `CountAsync`, `AnyAsync` or
+`PageAsync`; use a row-returning terminal. This API does not add skip-locked,
+nowait, table-specific lock targets or SQL Server lock hints. Joined queries
+remain subject to each database's locking restrictions.
+
+Typed numeric assignments support `Increment` with either one or an explicit
+parameterized amount. The addition happens in the database, avoiding a
+read/modify/write race. Normal key/generated-property and mutation-predicate
+guards still apply; numeric overflow follows the database's rules.
+
+```csharp
+await transaction.Update<User>()
+    .Increment(user => user.Version)
+    .Where(user => user.Id == userId)
+    .ExecuteAsync();
+
+await transaction.Update<Account>()
+    .Increment(account => account.Balance, 2.5m)
+    .Where(account => account.Id == accountId)
+    .ExecuteAsync();
+```
+
+`Increment` accepts non-nullable numeric properties. For more general SQL
+assignments, `SetExpression(property, valueExpression)` remains available.
+
 ## Relations and includes
 
 Reference and collection navigations can be loaded using split queries:
@@ -582,7 +627,7 @@ await session.ExecuteAsync(
 `Returning(...)` compiles to the provider-specific mutation result syntax where
 supported, including SQL Server's `OUTPUT` form.
 
-## Upsert (0.4 development)
+## Upsert (0.4.0)
 
 Upsert inserts one row, or handles a conflict with an explicitly named primary
 key or unique constraint. Choose the columns to copy from the incoming row:
@@ -644,7 +689,7 @@ unsupported, not silently weaken `OnConflict` or selected-update semantics.
 See [the provider decision](API_PLAN.md#provider-support-decision-for-04) for the
 rationale and requirements before extending support.
 
-### Mapped batch inserts (0.4 development)
+### Mapped batch inserts (0.4.0)
 
 ```csharp
 var result = await session.InsertManyAsync(users,
@@ -677,7 +722,7 @@ was unknown). Affected rows are not a portable insert/update classification.
 Timeouts, cancellation, and command observers use the existing execution path.
 This is batched INSERT, not provider-native bulk loading or bulk upsert.
 
-### Default-only inserts and typed assignments (0.4 development)
+### Default-only inserts and typed assignments (0.4.0)
 
 ```csharp
 await session.ExecuteAsync(Sql.InsertInto("audit_entries").DefaultValues());
@@ -721,7 +766,7 @@ await session.Update<Account>()
 The selected property is typed, but SQL expression value/type compatibility
 remains the caller's responsibility and is ultimately checked by the database.
 
-### Typed mutation results (0.4 development)
+### Typed mutation results (0.4.0)
 
 Insert, update, delete, and upsert wrappers expose selected returned properties:
 
@@ -781,7 +826,7 @@ permissions for the server version). Use a dedicated test database.
 
 ## Raw SQL
 
-### Provider-bound inspection and capabilities (0.4 development)
+### Provider-bound inspection and capabilities (0.4.0)
 
 The current working-tree support is:
 
